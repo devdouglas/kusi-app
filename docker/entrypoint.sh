@@ -9,11 +9,11 @@ if [ -z "$DATABASE_URL" ]; then
 fi
 
 echo "Running database migrations..."
-npx prisma migrate deploy
+./node_modules/.bin/prisma migrate deploy
 
 if [ "$RUN_SEED" = "true" ]; then
   echo "Seeding database..."
-  npx tsx prisma/seed.ts
+  ./node_modules/.bin/tsx prisma/seed.ts
 fi
 
 echo "Starting Next.js..."
