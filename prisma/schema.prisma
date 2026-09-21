@@ -1,0 +1,351 @@
+// Kusi Safaris Rates & Quotes — database schema
+//
+// Money handling: every monetary amount is stored as an integer number of
+// "cents" (smallest currency unit) to avoid floating point rounding errors.
+// Business logic converts to/from Decimal (decimal.js) only for arithmetic.
+//
+// Currency conversion: the exchange rate is stored as an integer
+// "rateMicros" = (KES per 1 USD) * 1,000,000, giving 6 decimal places of
+// precision without floating point.
+//
+// SQLite is used for local development. All types used here (String, Int,
+// Boolean, DateTime) are supported identically on PostgreSQL, so migrating
+// later only requires changing the datasource provider/url.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Settings (singleton)
+// ---------------------------------------------------------------------------
+
+model Settings {
+  id              String   @id @default("singleton")
+  // KES per 1 USD, scaled by 1,000,000
+  rateMicros      Int
+  updatedAt       DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Shared enums
+// ---------------------------------------------------------------------------
+
+enum Currency {
+  USD
+  KES
+}
+
+enum Season {
+  LOW
+  SHOULDER
+  HIGH
+}
+
+enum MealPlan {
+  BB // Bed & Breakfast
+  HB // Half Board
+  FB // Full Board
+  FI // Fully Inclusive
+}
+
+enum PricingBasis {
+  PER_PERSON
+  PER_ROOM
+}
+
+enum VehicleType {
+  VAN
+  JEEP_5PAX
+  JEEP_8PAX
+}
+
+enum QuoteStatus {
+  DRAFT
+  FINAL
+  ARCHIVED
+}
+
+// A rate-library category, used on QuoteLineItem to tag which kind of item
+// it represents (library-backed or manual).
+enum LineItemCategory {
+  ACCOMMODATION
+  PRIVATE_TRANSPORT
+  TRAIN
+  TAXI_TRANSFER
+  ACTIVITY
+  DOMESTIC_FLIGHT
+  VILLA
+  MISC
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Accommodation
+// ---------------------------------------------------------------------------
+
+model Accommodation {
+  id           String   @id @default(cuid())
+  name         String
+  location     String
+  notes        String?
+  currency     Currency
+  pricingBasis PricingBasis
+  archived     Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  roomTypes AccommodationRoomType[]
+  rates     AccommodationRate[]
+
+  @@index([name])
+  @@index([archived])
+}
+
+model AccommodationRoomType {
+  id              String   @id @default(cuid())
+  accommodationId String
+  name            String
+  sortOrder       Int      @default(0)
+
+  accommodation Accommodation       @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
+  rates         AccommodationRate[]
+
+  @@index([accommodationId])
+}
+
+// One row per (room type, season, meal plan) combination. Only the fields
+// relevant to the accommodation's pricingBasis are populated; the others
+// stay null. This mirrors the rate-entry grid in the UI directly.
+model AccommodationRate {
+  id              String   @id @default(cuid())
+  accommodationId String
+  roomTypeId      String
+  season          Season
+  mealPlan        MealPlan
+
+  // PER_PERSON fields (cents)
+  adultSharingCents Int?
+  child5to12Cents   Int?
+  childUnder5Cents  Int?
+  singleCents       Int?
+
+  // PER_ROOM fields (cents)
+  standardRoomCents Int?
+  singleRoomCents   Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  accommodation Accommodation         @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
+  roomType      AccommodationRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([roomTypeId, season, mealPlan])
+  @@index([accommodationId])
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Private Transport & Guide
+// ---------------------------------------------------------------------------
+
+model TransportRate {
+  id              String      @id @default(cuid())
+  vehicleType     VehicleType
+  priceCents      Int
+  currency        Currency
+  notes           String?
+  archived        Boolean     @default(false)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([vehicleType])
+  @@index([archived])
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Train
+// ---------------------------------------------------------------------------
+
+model TrainJourney {
+  id                String   @id @default(cuid())
+  route             String
+  firstClassCents   Int
+  secondClassCents  Int
+  currency          Currency
+  notes             String?
+  archived          Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([route])
+  @@index([archived])
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Taxi Transfer
+// ---------------------------------------------------------------------------
+
+model TransferRate {
+  id            String   @id @default(cuid())
+  route         String
+  priceCents    Int
+  currency      Currency
+  notes         String?
+  archived      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([route])
+  @@index([archived])
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Activities
+// ---------------------------------------------------------------------------
+
+model ActivityRate {
+  id            String   @id @default(cuid())
+  name          String
+  location      String
+  priceCents    Int
+  currency      Currency
+  notes         String?
+  archived      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([name])
+  @@index([archived])
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Domestic Flights
+// ---------------------------------------------------------------------------
+
+model FlightRate {
+  id            String   @id @default(cuid())
+  route         String
+  priceCents    Int
+  currency      Currency
+  notes         String?
+  archived      Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([route])
+  @@index([archived])
+}
+
+// ---------------------------------------------------------------------------
+// Quotes
+// ---------------------------------------------------------------------------
+
+model Quote {
+  id          String      @id @default(cuid())
+  clientName  String
+  tripTitle   String
+  startDate   DateTime
+  endDate     DateTime
+
+  adults        Int @default(1)
+  children5to12 Int @default(0)
+  childrenUnder5 Int @default(0)
+
+  status QuoteStatus @default(DRAFT)
+
+  // Exchange rate snapshot: KES per 1 USD, scaled by 1,000,000, captured
+  // when the quote was created (or last explicitly refreshed).
+  rateMicros Int
+
+  // Future selling-price architecture (Version 1 leaves these null and the
+  // UI never surfaces them). Kept separate from cost fields on purpose so
+  // margin logic can be layered on later without touching the cost engine.
+  marginPercent  Int? // basis points (1/100 of a percent), e.g. 1500 = 15.00%
+  sellingPriceCents Int?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  days QuoteDay[]
+
+  @@index([status])
+  @@index([clientName])
+}
+
+model QuoteDay {
+  id        String   @id @default(cuid())
+  quoteId   String
+  date      DateTime
+  dayNumber Int
+
+  quote     Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  lineItems QuoteLineItem[]
+
+  @@unique([quoteId, dayNumber])
+  @@index([quoteId])
+}
+
+// A flexible line item. `data` holds a JSON payload whose shape depends on
+// `category` (see src/lib/quote/line-items.ts for the discriminated-union
+// types that are parsed out of it). Common cost fields are kept as real
+// columns so totals can be computed/queried without parsing JSON.
+model QuoteLineItem {
+  id       String           @id @default(cuid())
+  dayId    String
+  category LineItemCategory
+  sortOrder Int             @default(0)
+
+  // If this line item was created from a Rate Library entry, its source id
+  // (kept for reference only — never re-read for pricing after creation).
+  sourceId String?
+
+  // Human-readable snapshot description shown in the UI/Word doc, frozen at
+  // the time the item was added (e.g. "Samburu Intrepids — Deluxe Tent").
+  description String
+
+  // Original entered currency/price, preserved for display + snapshot
+  // fidelity, independent of the USD figure used for totals.
+  originalCurrency  Currency
+  // Simple "unit x quantity" categories populate these directly; for
+  // Accommodation (a composite of several guest/room rates) they are left
+  // null and the full breakdown lives in `data` instead.
+  originalUnitCents Int?
+  quantity          Int?
+
+  // Total in the original currency (always present — the single source of
+  // truth for display), and its USD conversion (always present — the
+  // number used for quote totals).
+  originalTotalCents Int
+  // Exchange rate snapshot used to convert this line to USD (may differ
+  // slightly from the quote-level rate only if this item predates a
+  // mid-edit refresh; normally equal to the parent Quote.rateMicros).
+  rateMicros         Int
+  totalUsdCents      Int
+
+  // Manual override support (spec section 38): what the Rate Library would
+  // have produced, preserved for reference, vs. originalTotalCents which is
+  // the (possibly overridden) figure actually used for this quote.
+  manualOverride     Boolean   @default(false)
+  libraryTotalCents  Int?
+  libraryCurrency    Currency?
+
+  notes String?
+
+  // Category-specific structured data (room type, season, meal plan,
+  // vehicle type, passenger counts, etc.) — see line-items.ts.
+  data String // JSON
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  day QuoteDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+
+  @@index([dayId])
+  @@index([category])
+}
