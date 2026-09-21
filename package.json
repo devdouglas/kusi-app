@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "pretest": "DATABASE_URL=file:./test.db npx prisma migrate deploy",
+    "pretest": "npx prisma migrate deploy",
     "test": "vitest run",
     "seed": "tsx prisma/seed.ts"
   },

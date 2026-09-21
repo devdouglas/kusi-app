@@ -8,9 +8,7 @@ costings day by day.
 
 - **Next.js 16** (App Router) + **React 19** + **TypeScript**
 - **Tailwind CSS 4** for styling
-- **Prisma** ORM with **SQLite** for local development (schema uses only
-  types that map cleanly onto PostgreSQL, so switching `datasource` provider
-  is the only change needed to move to Postgres later)
+- **Prisma** ORM with **PostgreSQL**
 - **Zod** for input validation
 - **decimal.js** for exact currency arithmetic (see [Money handling](#money-handling))
 - **docx** for generating the internal Word quote summary
@@ -19,14 +17,28 @@ costings day by day.
 ## Getting started
 
 ```bash
+docker compose -f docker-compose.dev.yml up -d
 npm install
 cp .env.example .env
-npx prisma migrate deploy   # creates prisma/dev.db and applies the schema
+npx prisma migrate deploy
 npm run seed                # optional: a couple of demo Rate Library entries
 npm run dev
 ```
 
 Open http://localhost:3000.
+
+## Docker / Dokploy
+
+| Dokploy setup | Build type | Database |
+| --- | --- | --- |
+| **Application** (recommended) | **Dockerfile** at repo root | Create **PostgreSQL** in Dokploy; set `DATABASE_URL` to the **internal** connection URL |
+| **Docker Compose** | `docker-compose.yml` | Uses bundled `postgres:16-alpine`, or drop `db` and point `DATABASE_URL` at managed Postgres |
+
+1. Add a **domain** on the app service (required for Traefik and for reaching internal DB URLs from the container).
+2. Set env: `DATABASE_URL`, optionally `RUN_SEED=true` once for demo data.
+3. Deploy — the entrypoint runs `prisma migrate deploy` before `next start`.
+
+Full stack locally: `docker compose up --build` → http://localhost:3000
 
 ## Scripts
 

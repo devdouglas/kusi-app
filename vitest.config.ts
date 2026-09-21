@@ -6,7 +6,9 @@ export default defineConfig({
     environment: "node",
     include: ["src/**/*.test.ts"],
     env: {
-      DATABASE_URL: "file:./test.db",
+      DATABASE_URL:
+        process.env.DATABASE_URL ??
+        "postgresql://kusi:kusi@127.0.0.1:5432/kusi_test?schema=public",
     },
     fileParallelism: false,
   },

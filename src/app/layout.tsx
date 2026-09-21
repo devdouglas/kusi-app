@@ -14,6 +14,9 @@ export const metadata: Metadata = {
   description: "Internal rate library and quote builder for Kusi Safaris.",
 };
 
+// Prisma-backed pages must not pre-render at `next build` (no DB in the image build).
+export const dynamic = "force-dynamic";
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${sourceSans.variable} h-full antialiased`}>

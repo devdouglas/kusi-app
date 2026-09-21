@@ -8,16 +8,12 @@
 // "rateMicros" = (KES per 1 USD) * 1,000,000, giving 6 decimal places of
 // precision without floating point.
 //
-// SQLite is used for local development. All types used here (String, Int,
-// Boolean, DateTime) are supported identically on PostgreSQL, so migrating
-// later only requires changing the datasource provider/url.
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

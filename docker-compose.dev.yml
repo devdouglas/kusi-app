@@ -1,0 +1,19 @@
+# Postgres only — run the Next dev server on the host:
+#   docker compose -f docker-compose.dev.yml up -d
+#   cp .env.example .env && npm run dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-kusi}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kusi}
+      POSTGRES_DB: ${POSTGRES_DB:-kusi}
+    volumes:
+      - kusi-dev-db:/var/lib/postgresql/data
+
+volumes:
+  kusi-dev-db:
