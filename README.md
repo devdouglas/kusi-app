@@ -32,7 +32,8 @@ Open http://localhost:3000.
 | Dokploy setup | Build type | Database |
 | --- | --- | --- |
 | **Application** (recommended) | **Dockerfile** at repo root | Create **PostgreSQL** in Dokploy; set `DATABASE_URL` to the **internal** connection URL |
-| **Docker Compose** | `docker-compose.yml` | Uses bundled `postgres:16-alpine`, or drop `db` and point `DATABASE_URL` at managed Postgres |
+| **Docker Compose** | `docker-compose.dokploy.yml` | Managed Postgres in Dokploy — **required** so the app joins `dokploy-network` and resolves `kusi-db-*` hosts |
+| **Docker Compose (local full stack)** | `docker-compose.yml` | Bundled `postgres:16-alpine` |
 
 1. Add a **domain** on the app service (required for Traefik and for reaching internal DB URLs from the container).
 2. Set env: `DATABASE_URL`, optionally `RUN_SEED=true` once for demo data.

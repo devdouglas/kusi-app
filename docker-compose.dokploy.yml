@@ -1,0 +1,20 @@
+# Dokploy: Compose deploy + managed Postgres (not the bundled db in docker-compose.yml).
+# Set env in Dokploy (DATABASE_URL = internal URL with host like kusi-db-xxxxx).
+# Add domain app.kusisafaris.com → service `app`, container port 3000.
+
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
+      DATABASE_URL: ${DATABASE_URL}
+      RUN_SEED: ${RUN_SEED:-false}
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    external: true
