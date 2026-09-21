@@ -317,7 +317,7 @@ export function AccommodationForm({
                               min={0}
                               value={row.adultSharing}
                               onChange={(e) => updateRateRow(row.key, { adultSharing: e.target.value })}
-                              className="w-24 py-1.5"
+                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -326,7 +326,7 @@ export function AccommodationForm({
                               min={0}
                               value={row.child5to12}
                               onChange={(e) => updateRateRow(row.key, { child5to12: e.target.value })}
-                              className="w-24 py-1.5"
+                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -335,7 +335,7 @@ export function AccommodationForm({
                               min={0}
                               value={row.childUnder5}
                               onChange={(e) => updateRateRow(row.key, { childUnder5: e.target.value })}
-                              className="w-24 py-1.5"
+                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -344,7 +344,7 @@ export function AccommodationForm({
                               min={0}
                               value={row.single}
                               onChange={(e) => updateRateRow(row.key, { single: e.target.value })}
-                              className="w-24 py-1.5"
+                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
                         </>
@@ -356,7 +356,7 @@ export function AccommodationForm({
                               min={0}
                               value={row.standardRoom}
                               onChange={(e) => updateRateRow(row.key, { standardRoom: e.target.value })}
-                              className="w-24 py-1.5"
+                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -365,7 +365,7 @@ export function AccommodationForm({
                               min={0}
                               value={row.singleRoom}
                               onChange={(e) => updateRateRow(row.key, { singleRoom: e.target.value })}
-                              className="w-24 py-1.5"
+                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
                         </>
