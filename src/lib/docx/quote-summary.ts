@@ -8,14 +8,6 @@ const SAGE = "8A9270";
 const CHARCOAL = "2B2B27";
 const MUTED = "6B6B63";
 
-function heading(text: string, level: (typeof HeadingLevel)[keyof typeof HeadingLevel]) {
-  return new Paragraph({
-    heading: level,
-    spacing: { before: 240, after: 120 },
-    children: [new TextRun({ text, color: SAGE, bold: true })],
-  });
-}
-
 function kv(label: string, value: string) {
   return new Paragraph({
     spacing: { after: 40 },
@@ -97,11 +89,14 @@ function dayCell(day: DerivedDay): Paragraph[] {
   ];
   if (day.lineItems.length === 0) {
     paragraphs.push(
-      new Paragraph({ spacing: { after: 100 }, children: [new TextRun({ text: "No items", italics: true, color: MUTED })] })
+      new Paragraph({
+        spacing: { after: 200 },
+        children: [new TextRun({ text: "No items", italics: true, color: MUTED })],
+      })
     );
-  } else {
-    for (const li of day.lineItems) paragraphs.push(...lineItemParagraphs(li));
+    return paragraphs;
   }
+  for (const li of day.lineItems) paragraphs.push(...lineItemParagraphs(li));
   paragraphs.push(
     new Paragraph({
       spacing: { before: 60, after: 200 },

@@ -8,8 +8,12 @@ const DEFAULT_RATE = 130; // sensible starting default; user edits in Settings
 export async function getSettings() {
   const settings = await prisma.settings.findUnique({ where: { id: SETTINGS_ID } });
   if (settings) return settings;
-  return prisma.settings.create({
-    data: { id: SETTINGS_ID, rateMicros: rateToMicros(DEFAULT_RATE) },
+  // upsert (rather than create) so concurrent first-time reads — e.g. many
+  // pages statically generating in parallel — don't race on the unique id.
+  return prisma.settings.upsert({
+    where: { id: SETTINGS_ID },
+    update: {},
+    create: { id: SETTINGS_ID, rateMicros: rateToMicros(DEFAULT_RATE) },
   });
 }
 

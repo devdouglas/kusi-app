@@ -303,6 +303,13 @@ async function nextSortOrder(dayId: string) {
 
 type LineItemCreateCore = Omit<Prisma.QuoteLineItemUncheckedCreateInput, "dayId" | "sortOrder">;
 
+async function replaceLineItemCore(id: string, core: LineItemCreateCore) {
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: true } });
+  const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
+  revalidateQuote(existing.day.quoteId);
+  return updated;
+}
+
 export async function removeLineItem(id: string) {
   const li = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: true } });
   await prisma.quoteLineItem.delete({ where: { id } });
@@ -653,6 +660,20 @@ export async function addTrainManualLineItem(raw: unknown) {
   return created;
 }
 
+export async function updateTrainLineItem(id: string, raw: unknown) {
+  const input = trainLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildTrainLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
+}
+
+export async function updateTrainManualLineItem(id: string, raw: unknown) {
+  const input = trainManualLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildTrainManualLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
+}
+
 // ---------------------------------------------------------------------------
 // Taxi Transfer
 // ---------------------------------------------------------------------------
@@ -739,6 +760,20 @@ export async function addTransferManualLineItem(raw: unknown) {
   const created = await prisma.quoteLineItem.create({ data: { dayId: input.dayId, sortOrder, ...core } });
   revalidateQuote(day.quoteId);
   return created;
+}
+
+export async function updateTransferLineItem(id: string, raw: unknown) {
+  const input = transferLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildTransferLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
+}
+
+export async function updateTransferManualLineItem(id: string, raw: unknown) {
+  const input = transferManualLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildTransferManualLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
 }
 
 // ---------------------------------------------------------------------------
@@ -829,6 +864,20 @@ export async function addActivityManualLineItem(raw: unknown) {
   return created;
 }
 
+export async function updateActivityLineItem(id: string, raw: unknown) {
+  const input = activityLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildActivityLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
+}
+
+export async function updateActivityManualLineItem(id: string, raw: unknown) {
+  const input = activityManualLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildActivityManualLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
+}
+
 // ---------------------------------------------------------------------------
 // Domestic Flights
 // ---------------------------------------------------------------------------
@@ -915,6 +964,20 @@ export async function addFlightManualLineItem(raw: unknown) {
   const created = await prisma.quoteLineItem.create({ data: { dayId: input.dayId, sortOrder, ...core } });
   revalidateQuote(day.quoteId);
   return created;
+}
+
+export async function updateFlightLineItem(id: string, raw: unknown) {
+  const input = flightLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildFlightLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
+}
+
+export async function updateFlightManualLineItem(id: string, raw: unknown) {
+  const input = flightManualLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const core = await buildFlightManualLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
 }
 
 // ---------------------------------------------------------------------------
