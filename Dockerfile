@@ -48,19 +48,12 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
-COPY --from=builder /app/node_modules/@prisma ./node_modules/@prisma
-COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
-COPY --from=builder /app/node_modules/.bin ./node_modules/.bin
-COPY --from=builder /app/node_modules/tsx ./node_modules/tsx
-COPY --from=builder /app/node_modules/esbuild ./node_modules/esbuild
-COPY --from=builder /app/node_modules/get-tsconfig ./node_modules/get-tsconfig
-COPY --from=builder /app/node_modules/resolve-pkg-maps ./node_modules/resolve-pkg-maps
 COPY --from=builder /app/src/lib/money.ts ./src/lib/money.ts
 COPY docker/entrypoint.sh ./entrypoint.sh
 
-RUN mkdir -p /app/.npm \
+# Standalone trace omits the Prisma CLI tree (effect, @prisma/config, …).
+RUN npm install prisma@6.19.3 tsx@4.23.15 --no-save --ignore-scripts \
+  && mkdir -p /app/.npm \
   && chmod +x ./entrypoint.sh \
   && chown -R nextjs:nodejs /app
 
