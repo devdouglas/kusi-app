@@ -1,8 +1,14 @@
 import { z } from "zod";
+import { MIN_CHILD_AGE, MAX_CHILD_AGE } from "@/lib/calc/child-brackets";
 
 const currency = z.enum(["USD", "KES"]);
 const nonNegativeInt = z.number().int().min(0);
 const positiveInt = z.number().int().min(1, "Must be at least 1");
+const childAge = z.number().int().min(MIN_CHILD_AGE).max(MAX_CHILD_AGE, "Ages above 15 are treated as adults");
+
+const manualTotalOverride = z.object({ amount: z.number().min(0, "Prices cannot be negative"), currency });
+
+export const quoteChildInput = z.object({ age: childAge });
 
 export const quoteHeaderInput = z
   .object({
@@ -11,8 +17,7 @@ export const quoteHeaderInput = z
     startDate: z.coerce.date(),
     endDate: z.coerce.date(),
     adults: positiveInt,
-    children5to12: nonNegativeInt,
-    childrenUnder5: nonNegativeInt,
+    children: z.array(quoteChildInput).default([]),
   })
   .refine((d) => d.endDate >= d.startDate, {
     message: "End date cannot be before start date",
@@ -28,16 +33,29 @@ export const accommodationLineInput = z.object({
   mealPlan: z.enum(["BB", "HB", "FB", "FI"]),
   // per-person
   adultsSharing: nonNegativeInt.optional(),
-  child5to12: nonNegativeInt.optional(),
-  childUnder5: nonNegativeInt.optional(),
   adultsSingle: nonNegativeInt.optional(),
+  /** Ages of the children included at this accommodation; defaults to every child on the quote when omitted. */
+  childAges: z.array(childAge).optional(),
   totalRooms: nonNegativeInt.optional().nullable(),
   singleRooms: nonNegativeInt.optional().nullable(),
   // per-room
   roomTotalRooms: nonNegativeInt.optional(),
   roomSingleRooms: nonNegativeInt.optional(),
+  /** Only used to rescue a save when a child's age matches no configured bracket. */
+  manualTotalOverride: manualTotalOverride.optional(),
 });
 export type AccommodationLineInput = z.infer<typeof accommodationLineInput>;
+
+export const parkLineInput = z.object({
+  dayId: z.string().min(1),
+  parkId: z.string().min(1),
+  /** Adult quantity for this visit; defaults to the full trip adult count, may be reduced. */
+  adults: nonNegativeInt.optional(),
+  /** Ages of the children included on this visit (a subset of the quote's children is allowed for exclusions); defaults to every child on the quote. */
+  childAges: z.array(childAge).optional(),
+  manualTotalOverride: manualTotalOverride.optional(),
+});
+export type ParkLineInput = z.infer<typeof parkLineInput>;
 
 export const transportLineInput = z.object({
   dayId: z.string().min(1),

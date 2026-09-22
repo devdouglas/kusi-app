@@ -7,6 +7,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label, FormRow } from "@/components/ui/field";
 import { Stepper } from "@/components/ui/stepper";
+import { ChildAgesEditor } from "./child-ages-editor";
 
 export function NewQuoteForm() {
   const router = useRouter();
@@ -15,13 +16,18 @@ export function NewQuoteForm() {
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [adults, setAdults] = useState(2);
-  const [hasChildren, setHasChildren] = useState(false);
-  const [children5to12, setChildren5to12] = useState(0);
-  const [childrenUnder5, setChildrenUnder5] = useState(0);
+  const [childAges, setChildAges] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const totalPax = adults + (hasChildren ? children5to12 + childrenUnder5 : 0);
+  function setChildrenCount(count: number) {
+    setChildAges((ages) => {
+      if (count <= ages.length) return ages.slice(0, count);
+      return [...ages, ...Array(count - ages.length).fill(0)];
+    });
+  }
+
+  const totalPax = adults + childAges.length;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -42,8 +48,7 @@ export function NewQuoteForm() {
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         adults,
-        children5to12: hasChildren ? children5to12 : 0,
-        childrenUnder5: hasChildren ? childrenUnder5 : 0,
+        children: childAges.map((age) => ({ age })),
       });
       router.push(`/quotes/${quote.id}`);
     } catch (err) {
@@ -86,10 +91,10 @@ export function NewQuoteForm() {
             </div>
             <Stepper value={adults} onChange={setAdults} min={1} />
 
-            {!hasChildren ? (
+            {childAges.length === 0 ? (
               <button
                 type="button"
-                onClick={() => setHasChildren(true)}
+                onClick={() => setChildrenCount(1)}
                 className="mt-3 text-[13px] font-medium text-sage-700 hover:underline"
               >
                 + Add children
@@ -97,20 +102,13 @@ export function NewQuoteForm() {
             ) : (
               <div className="mt-4 space-y-4">
                 <div>
-                  <Label>Children 5–12</Label>
-                  <Stepper value={children5to12} onChange={setChildren5to12} min={0} />
+                  <Label>Children</Label>
+                  <Stepper value={childAges.length} onChange={setChildrenCount} min={0} />
                 </div>
-                <div>
-                  <Label>Children under 5</Label>
-                  <Stepper value={childrenUnder5} onChange={setChildrenUnder5} min={0} />
-                </div>
+                <ChildAgesEditor ages={childAges} onChange={setChildAges} />
                 <button
                   type="button"
-                  onClick={() => {
-                    setHasChildren(false);
-                    setChildren5to12(0);
-                    setChildrenUnder5(0);
-                  }}
+                  onClick={() => setChildAges([])}
                   className="text-[13px] font-medium text-muted hover:underline"
                 >
                   Remove children

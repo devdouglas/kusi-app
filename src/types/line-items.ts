@@ -25,8 +25,43 @@ export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
   JEEP_8PAX: "Jeep – 8 pax",
 };
 
+/** One accommodation-specific child age bracket, with how many/which children in it. */
+export interface ChildBracketSelection {
+  bracketId: string;
+  /** Frozen display label at the time of booking (e.g. "4–11 years"). */
+  label: string;
+  minAge: number;
+  maxAge: number;
+  priceCents: number;
+  /** Exact ages of the children counted in this bracket. */
+  ages: number[];
+}
+
 export interface AccommodationPerPersonData {
   pricingBasis: "PER_PERSON";
+  adultsSharing: number;
+  adultsSingle: number;
+  childBrackets: ChildBracketSelection[];
+  /** Ages that matched no configured bracket — only non-empty when a manual total override was used to proceed (see spec: "never silently guess"). */
+  unmatchedChildAges: number[];
+  rates: {
+    adultSharingCents: number;
+    singleCents: number | null;
+  };
+  /** Informational only — never multiplies the rate again. */
+  totalRooms: number | null;
+  singleRooms: number | null;
+}
+
+/**
+ * Legacy shape for accommodation quotes saved before the exact-age /
+ * accommodation-specific-bracket model. Never produced by new code — kept
+ * only so old saved quotes remain readable. See README "Migrating existing
+ * child-pricing data".
+ */
+export interface AccommodationPerPersonDataLegacy {
+  pricingBasis: "PER_PERSON";
+  legacy: true;
   adultsSharing: number;
   child5to12: number;
   childUnder5: number;
@@ -37,7 +72,6 @@ export interface AccommodationPerPersonData {
     childUnder5Cents: number | null;
     singleCents: number | null;
   };
-  /** Informational only — never multiplies the rate again. */
   totalRooms: number | null;
   singleRooms: number | null;
 }
@@ -63,7 +97,13 @@ export interface AccommodationLineData {
   season: Season;
   mealPlan: MealPlan;
   currency: Currency;
-  basis: AccommodationPerPersonData | AccommodationPerRoomData;
+  basis: AccommodationPerPersonData | AccommodationPerPersonDataLegacy | AccommodationPerRoomData;
+}
+
+export function isLegacyPerPersonBasis(
+  basis: AccommodationPerPersonData | AccommodationPerPersonDataLegacy | AccommodationPerRoomData
+): basis is AccommodationPerPersonDataLegacy {
+  return basis.pricingBasis === "PER_PERSON" && "legacy" in basis && basis.legacy === true;
 }
 
 export interface TransportLineData {
@@ -104,6 +144,20 @@ export interface ActivityLineData {
   currency: Currency;
 }
 
+/** Park Entrance Fees: adults at the flat adult fee, children matched to the park's own age brackets. */
+export interface ParkEntranceFeeLineData {
+  category: "PARK_ENTRANCE_FEE";
+  parkId: string;
+  parkName: string;
+  currency: Currency;
+  adultFeeCents: number;
+  /** Adult quantity actually applied to this visit — may be reduced from the trip's full adult count. */
+  adults: number;
+  childBrackets: ChildBracketSelection[];
+  /** Ages that matched no configured bracket — only non-empty when a manual total override was used to proceed. */
+  unmatchedChildAges: number[];
+}
+
 export interface FlightLineData {
   category: "DOMESTIC_FLIGHT";
   flightId: string | null;
@@ -138,6 +192,7 @@ export type LineItemData =
   | TrainLineData
   | TransferLineData
   | ActivityLineData
+  | ParkEntranceFeeLineData
   | FlightLineData
   | VillaLineData
   | MiscLineData;
@@ -150,6 +205,7 @@ export const CATEGORY_LABELS: Record<LineItemCategory, string> = {
   TRAIN: "Train",
   TAXI_TRANSFER: "Taxi Transfer",
   ACTIVITY: "Activity",
+  PARK_ENTRANCE_FEE: "Park Entrance Fee",
   DOMESTIC_FLIGHT: "Domestic Flight",
   VILLA: "Villa",
   MISC: "Misc",

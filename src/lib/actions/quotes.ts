@@ -5,10 +5,14 @@ import { revalidatePath } from "next/cache";
 import { amountToCents, toUsdCents, type Currency } from "@/lib/money";
 import { getExchangeRateMicros } from "@/lib/settings";
 import { generateTripDates } from "@/lib/calc/trip-dates";
+import { computeTotalPax } from "@/lib/calc/quote-totals";
+import { bracketLabel } from "@/lib/calc/child-brackets";
 import {
-  computeAccommodationPerPerson,
   computeAccommodationPerRoom,
+  computeAccommodationPerPersonWithChildren,
+  type AccommodationChildBracketRate,
 } from "@/lib/calc/accommodation";
+import { computeParkEntranceFee, type ParkChildBracketRate } from "@/lib/calc/park";
 import {
   computeTransportTotal,
   computeTrainTotal,
@@ -22,10 +26,12 @@ import {
   serializeLineItemData,
   VEHICLE_TYPE_LABELS,
   type AccommodationLineData,
+  type ChildBracketSelection,
   type TransportLineData,
   type TrainLineData,
   type TransferLineData,
   type ActivityLineData,
+  type ParkEntranceFeeLineData,
   type FlightLineData,
   type VillaLineData,
   type MiscLineData,
@@ -33,6 +39,7 @@ import {
 import {
   quoteHeaderInput,
   accommodationLineInput,
+  parkLineInput,
   transportLineInput,
   trainLineInput,
   trainManualLineInput,
@@ -48,6 +55,11 @@ import {
   type QuoteHeaderInput,
 } from "@/lib/validation/quote";
 import type { Prisma } from "@prisma/client";
+
+/** Missing-bracket error message, shared by accommodation and park entrance fee builders. */
+function noChildRateError(age: number, supplierName: string): Error {
+  return new Error(`No child rate configured for age ${age} at ${supplierName}.`);
+}
 
 function safeRevalidate(path: string) {
   // revalidatePath only works inside a Next.js request context; these
@@ -78,12 +90,12 @@ export async function listQuotes(opts: { search?: string; status?: "DRAFT" | "FI
         : {}),
     },
     orderBy: { updatedAt: "desc" },
-    include: { days: { include: { lineItems: true } } },
+    include: { days: { include: { lineItems: true } }, children: true },
   });
 
   return quotes.map((q) => {
     const totalUsdCents = q.days.flatMap((d) => d.lineItems).reduce((s, li) => s + li.totalUsdCents, 0);
-    const totalPax = q.adults + q.children5to12 + q.childrenUnder5;
+    const totalPax = computeTotalPax(q.adults, q.children.length);
     return {
       id: q.id,
       clientName: q.clientName,
@@ -105,7 +117,10 @@ export async function listQuotes(opts: { search?: string; status?: "DRAFT" | "FI
 export async function getQuote(id: string) {
   return prisma.quote.findUnique({
     where: { id },
-    include: { days: { include: { lineItems: true }, orderBy: { dayNumber: "asc" } } },
+    include: {
+      days: { include: { lineItems: true }, orderBy: { dayNumber: "asc" } },
+      children: true,
+    },
   });
 }
 
@@ -121,11 +136,12 @@ export async function createQuote(raw: QuoteHeaderInput) {
       startDate: input.startDate,
       endDate: input.endDate,
       adults: input.adults,
-      children5to12: input.children5to12,
-      childrenUnder5: input.childrenUnder5,
       rateMicros,
       days: {
         create: dates.map((date, i) => ({ date, dayNumber: i + 1 })),
+      },
+      children: {
+        create: input.children.map((c) => ({ age: c.age })),
       },
     },
   });
@@ -153,10 +169,17 @@ export async function updateQuoteHeader(id: string, raw: QuoteHeaderInput) {
       startDate: input.startDate,
       endDate: input.endDate,
       adults: input.adults,
-      children5to12: input.children5to12,
-      childrenUnder5: input.childrenUnder5,
     },
   });
+
+  // The children list is edited as a whole in the trip-details form, so a
+  // full replace is simpler and safer than diffing individual rows — and it
+  // never touches a previously-created line item's own frozen child-age
+  // snapshot (see buildAccommodationLine / buildParkEntranceFeeLine).
+  await prisma.quoteChild.deleteMany({ where: { quoteId: id } });
+  if (input.children.length > 0) {
+    await prisma.quoteChild.createMany({ data: input.children.map((c) => ({ quoteId: id, age: c.age })) });
+  }
 
   if (datesChanged) {
     const newDates = generateTripDates(input.startDate, input.endDate);
@@ -239,7 +262,7 @@ export async function deleteQuote(id: string) {
 export async function duplicateQuote(id: string) {
   const source = await prisma.quote.findUniqueOrThrow({
     where: { id },
-    include: { days: { include: { lineItems: true }, orderBy: { dayNumber: "asc" } } },
+    include: { days: { include: { lineItems: true }, orderBy: { dayNumber: "asc" } }, children: true },
   });
 
   const copy = await prisma.quote.create({
@@ -249,11 +272,12 @@ export async function duplicateQuote(id: string) {
       startDate: source.startDate,
       endDate: source.endDate,
       adults: source.adults,
-      children5to12: source.children5to12,
-      childrenUnder5: source.childrenUnder5,
       status: "DRAFT",
       rateMicros: source.rateMicros,
       notes: source.notes,
+      children: {
+        create: source.children.map((c) => ({ age: c.age, legacyLabel: c.legacyLabel })),
+      },
       days: {
         create: source.days.map((day) => ({
           date: day.date,
@@ -291,9 +315,17 @@ export async function duplicateQuote(id: string) {
 // ---------------------------------------------------------------------------
 
 async function getDayWithQuote(dayId: string) {
-  const day = await prisma.quoteDay.findUnique({ where: { id: dayId }, include: { quote: true } });
+  const day = await prisma.quoteDay.findUnique({
+    where: { id: dayId },
+    include: { quote: { include: { children: true } } },
+  });
   if (!day) throw new Error("Day not found");
   return day;
+}
+
+/** Exact ages of every child on the quote (legacy rows with no exact age are skipped — they can't be matched to any bracket). */
+function quoteChildAges(quote: { children: { age: number | null }[] }): number[] {
+  return quote.children.map((c) => c.age).filter((age): age is number => age != null);
 }
 
 async function nextSortOrder(dayId: string) {
@@ -388,12 +420,16 @@ export async function clearLineItemOverride(lineItemId: string) {
 
 async function buildAccommodationLine(
   input: ReturnType<typeof accommodationLineInput.parse>,
-  quote: { adults: number; children5to12: number; childrenUnder5: number; rateMicros: number }
+  quote: { adults: number; children: { age: number | null }[]; rateMicros: number }
 ): Promise<LineItemCreateCore> {
-  const accommodation = await prisma.accommodation.findUniqueOrThrow({ where: { id: input.accommodationId } });
+  const accommodation = await prisma.accommodation.findUniqueOrThrow({
+    where: { id: input.accommodationId },
+    include: { childAgeBrackets: true },
+  });
   const roomType = await prisma.accommodationRoomType.findUniqueOrThrow({ where: { id: input.roomTypeId } });
   const rate = await prisma.accommodationRate.findUnique({
     where: { roomTypeId_season_mealPlan: { roomTypeId: input.roomTypeId, season: input.season, mealPlan: input.mealPlan } },
+    include: { childRates: true },
   });
   if (!rate) {
     throw new Error("No rate is stored in the Rate Library for that room type, season and meal plan combination.");
@@ -406,24 +442,56 @@ async function buildAccommodationLine(
     if (rate.adultSharingCents == null) {
       throw new Error("This combination has no per-person rate stored yet.");
     }
-    const quantities = {
-      adultsSharing: input.adultsSharing ?? quote.adults,
-      child5to12: input.child5to12 ?? quote.children5to12,
-      childUnder5: input.childUnder5 ?? quote.childrenUnder5,
-      adultsSingle: input.adultsSingle ?? 0,
-    };
-    const result = computeAccommodationPerPerson(
-      {
-        adultSharingCents: rate.adultSharingCents,
-        child5to12Cents: rate.child5to12Cents,
-        childUnder5Cents: rate.childUnder5Cents,
-        singleCents: rate.singleCents,
-      },
-      quantities,
+    const adultsSharing = input.adultsSharing ?? quote.adults;
+    const adultsSingle = input.adultsSingle ?? 0;
+    const childAges = input.childAges ?? quoteChildAges(quote);
+
+    // Only brackets that have a configured price on THIS specific rate row
+    // are usable — a bracket can exist on the accommodation without every
+    // room/season/meal-plan combination pricing it.
+    const bracketRates: AccommodationChildBracketRate[] = accommodation.childAgeBrackets
+      .map((b) => {
+        const priceCents = rate.childRates.find((cr) => cr.bracketId === b.id)?.priceCents;
+        return priceCents == null ? null : { id: b.id, minAge: b.minAge, maxAge: b.maxAge, label: b.label, priceCents };
+      })
+      .filter((b): b is AccommodationChildBracketRate => b !== null);
+
+    const calc = computeAccommodationPerPersonWithChildren(
+      rate.adultSharingCents,
+      rate.singleCents,
+      bracketRates,
+      childAges,
+      adultsSharing,
+      adultsSingle,
       accommodation.currency,
       quote.rateMicros
     );
-    originalTotalCents = result.originalTotalCents;
+
+    let childBrackets: ChildBracketSelection[];
+    let unmatchedChildAges: number[];
+
+    if (calc.ok) {
+      originalTotalCents = calc.originalTotalCents;
+      childBrackets = calc.matchedChildren.map((m) => ({
+        bracketId: m.bracket.id,
+        label: bracketLabel(m.bracket),
+        minAge: m.bracket.minAge,
+        maxAge: m.bracket.maxAge,
+        priceCents: m.bracket.priceCents,
+        ages: m.ages,
+      }));
+      unmatchedChildAges = [];
+    } else if (input.manualTotalOverride) {
+      // Rescue path: a child's age matched no configured bracket, and the
+      // consultant chose to proceed with a manual total instead of
+      // guessing (spec: "never silently guess a child rate").
+      originalTotalCents = amountToCents(input.manualTotalOverride.amount);
+      childBrackets = [];
+      unmatchedChildAges = calc.unmatchedAges;
+    } else {
+      throw noChildRateError(calc.unmatchedAges[0], accommodation.name);
+    }
+
     data = {
       category: "ACCOMMODATION",
       accommodationId: accommodation.id,
@@ -433,19 +501,36 @@ async function buildAccommodationLine(
       roomTypeName: roomType.name,
       season: input.season,
       mealPlan: input.mealPlan,
-      currency: accommodation.currency,
+      currency: calc.ok ? accommodation.currency : input.manualTotalOverride!.currency,
       basis: {
         pricingBasis: "PER_PERSON",
-        ...quantities,
-        rates: {
-          adultSharingCents: rate.adultSharingCents,
-          child5to12Cents: rate.child5to12Cents,
-          childUnder5Cents: rate.childUnder5Cents,
-          singleCents: rate.singleCents,
-        },
+        adultsSharing,
+        adultsSingle,
+        childBrackets,
+        unmatchedChildAges,
+        rates: { adultSharingCents: rate.adultSharingCents, singleCents: rate.singleCents },
         totalRooms: input.totalRooms ?? null,
         singleRooms: input.singleRooms ?? null,
       },
+    };
+
+    const lineCurrency = calc.ok ? accommodation.currency : input.manualTotalOverride!.currency;
+    const usdTotalCents = toUsdCents(originalTotalCents, lineCurrency, quote.rateMicros);
+
+    return {
+      category: "ACCOMMODATION",
+      sourceId: accommodation.id,
+      description: `${accommodation.name} — ${roomType.name}`,
+      originalCurrency: lineCurrency,
+      originalUnitCents: null,
+      quantity: null,
+      originalTotalCents,
+      rateMicros: quote.rateMicros,
+      totalUsdCents: usdTotalCents,
+      manualOverride: !calc.ok,
+      libraryTotalCents: calc.ok ? originalTotalCents : null,
+      libraryCurrency: calc.ok ? accommodation.currency : null,
+      data: serializeLineItemData(data),
     };
   } else {
     if (rate.standardRoomCents == null) {
@@ -511,8 +596,107 @@ export async function addAccommodationLineItem(raw: unknown) {
 
 export async function updateAccommodationLineItem(id: string, raw: unknown) {
   const input = accommodationLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildAccommodationLine(input, existing.day.quote);
+  const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
+  revalidateQuote(existing.day.quoteId);
+  return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Park Entrance Fees
+// ---------------------------------------------------------------------------
+
+async function buildParkEntranceFeeLine(
+  input: ReturnType<typeof parkLineInput.parse>,
+  quote: { adults: number; children: { age: number | null }[]; rateMicros: number }
+): Promise<LineItemCreateCore> {
+  const park = await prisma.park.findUniqueOrThrow({
+    where: { id: input.parkId },
+    include: { childBrackets: true },
+  });
+
+  const adults = input.adults ?? quote.adults;
+  const childAges = input.childAges ?? quoteChildAges(quote);
+  const bracketRates: ParkChildBracketRate[] = park.childBrackets.map((b) => ({
+    id: b.id,
+    minAge: b.minAge,
+    maxAge: b.maxAge,
+    label: b.label,
+    priceCents: b.priceCents,
+  }));
+
+  const calc = computeParkEntranceFee(park.adultFeeCents, bracketRates, adults, childAges, park.currency, quote.rateMicros);
+
+  let originalTotalCents: number;
+  let childBrackets: ChildBracketSelection[];
+  let unmatchedChildAges: number[];
+  let currency = park.currency;
+
+  if (calc.ok) {
+    originalTotalCents = calc.originalTotalCents;
+    childBrackets = calc.matchedChildren.map((m) => ({
+      bracketId: m.bracket.id,
+      label: bracketLabel(m.bracket),
+      minAge: m.bracket.minAge,
+      maxAge: m.bracket.maxAge,
+      priceCents: m.bracket.priceCents,
+      ages: m.ages,
+    }));
+    unmatchedChildAges = [];
+  } else if (input.manualTotalOverride) {
+    originalTotalCents = amountToCents(input.manualTotalOverride.amount);
+    currency = input.manualTotalOverride.currency;
+    childBrackets = [];
+    unmatchedChildAges = calc.unmatchedAges;
+  } else {
+    throw noChildRateError(calc.unmatchedAges[0], park.name);
+  }
+
+  const data: ParkEntranceFeeLineData = {
+    category: "PARK_ENTRANCE_FEE",
+    parkId: park.id,
+    parkName: park.name,
+    currency,
+    adultFeeCents: park.adultFeeCents,
+    adults,
+    childBrackets,
+    unmatchedChildAges,
+  };
+
+  const usdTotalCents = toUsdCents(originalTotalCents, currency, quote.rateMicros);
+
+  return {
+    category: "PARK_ENTRANCE_FEE",
+    sourceId: park.id,
+    description: park.name,
+    originalCurrency: currency,
+    originalUnitCents: null,
+    quantity: null,
+    originalTotalCents,
+    rateMicros: quote.rateMicros,
+    totalUsdCents: usdTotalCents,
+    manualOverride: !calc.ok,
+    libraryTotalCents: calc.ok ? originalTotalCents : null,
+    libraryCurrency: calc.ok ? park.currency : null,
+    data: serializeLineItemData(data),
+  };
+}
+
+export async function addParkLineItem(raw: unknown) {
+  const input = parkLineInput.parse(raw);
+  const day = await getDayWithQuote(input.dayId);
+  const core = await buildParkEntranceFeeLine(input, day.quote);
+  const sortOrder = await nextSortOrder(input.dayId);
+  const created = await prisma.quoteLineItem.create({ data: { dayId: input.dayId, sortOrder, ...core } });
+  revalidateQuote(day.quoteId);
+  return created;
+}
+
+export async function updateParkLineItem(id: string, raw: unknown) {
+  const input = parkLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
+  const core = await buildParkEntranceFeeLine(input, existing.day.quote);
   const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
   revalidateQuote(existing.day.quoteId);
   return updated;
@@ -564,7 +748,7 @@ export async function addTransportLineItem(raw: unknown) {
 
 export async function updateTransportLineItem(id: string, raw: unknown) {
   const input = transportLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildTransportLine(input, existing.day.quote);
   const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
   revalidateQuote(existing.day.quoteId);
@@ -662,14 +846,14 @@ export async function addTrainManualLineItem(raw: unknown) {
 
 export async function updateTrainLineItem(id: string, raw: unknown) {
   const input = trainLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildTrainLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
 
 export async function updateTrainManualLineItem(id: string, raw: unknown) {
   const input = trainManualLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildTrainManualLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
@@ -764,14 +948,14 @@ export async function addTransferManualLineItem(raw: unknown) {
 
 export async function updateTransferLineItem(id: string, raw: unknown) {
   const input = transferLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildTransferLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
 
 export async function updateTransferManualLineItem(id: string, raw: unknown) {
   const input = transferManualLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildTransferManualLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
@@ -866,14 +1050,14 @@ export async function addActivityManualLineItem(raw: unknown) {
 
 export async function updateActivityLineItem(id: string, raw: unknown) {
   const input = activityLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildActivityLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
 
 export async function updateActivityManualLineItem(id: string, raw: unknown) {
   const input = activityManualLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildActivityManualLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
@@ -968,14 +1152,14 @@ export async function addFlightManualLineItem(raw: unknown) {
 
 export async function updateFlightLineItem(id: string, raw: unknown) {
   const input = flightLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildFlightLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
 
 export async function updateFlightManualLineItem(id: string, raw: unknown) {
   const input = flightManualLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildFlightManualLine(input, existing.day.quote);
   return replaceLineItemCore(id, core);
 }
@@ -1029,7 +1213,7 @@ export async function addVillaLineItem(raw: unknown) {
 
 export async function updateVillaLineItem(id: string, raw: unknown) {
   const input = villaLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildVillaLine(input, existing.day.quote);
   const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
   revalidateQuote(existing.day.quoteId);
@@ -1083,7 +1267,7 @@ export async function addMiscLineItem(raw: unknown) {
 
 export async function updateMiscLineItem(id: string, raw: unknown) {
   const input = miscLineInput.parse(raw);
-  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: true } } } });
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
   const core = await buildMiscLine(input, existing.day.quote);
   const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
   revalidateQuote(existing.day.quoteId);

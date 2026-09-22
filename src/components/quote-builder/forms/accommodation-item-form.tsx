@@ -3,12 +3,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { addAccommodationLineItem, updateAccommodationLineItem } from "@/lib/actions/quotes";
 import { listAccommodations, getAccommodation } from "@/lib/actions/rate-library";
-import { computeAccommodationPerPerson, computeAccommodationPerRoom } from "@/lib/calc/accommodation";
-import { formatMoney } from "@/lib/money";
-import { SEASON_LABELS, MEAL_PLAN_LABELS, type Season, type MealPlan, type AccommodationLineData } from "@/types/line-items";
+import { computeAccommodationPerPersonWithChildren, computeAccommodationPerRoom } from "@/lib/calc/accommodation";
+import { bracketLabel } from "@/lib/calc/child-brackets";
+import { formatMoney, amountToCents, toUsdCents, type Currency } from "@/lib/money";
+import {
+  SEASON_LABELS,
+  MEAL_PLAN_LABELS,
+  isLegacyPerPersonBasis,
+  type Season,
+  type MealPlan,
+  type AccommodationLineData,
+} from "@/types/line-items";
 import { Button } from "@/components/ui/button";
 import { Label, Select } from "@/components/ui/field";
 import { Stepper } from "@/components/ui/stepper";
+import { MoneyField } from "@/components/ui/money-field";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
 
 type AccommodationDetail = NonNullable<Awaited<ReturnType<typeof getAccommodation>>>;
@@ -22,7 +31,7 @@ export function AccommodationItemForm({
   onSaved,
 }: {
   dayId: string;
-  quote: { rateMicros: number; adults: number; children5to12: number; childrenUnder5: number };
+  quote: { rateMicros: number; adults: number; childAges: number[] };
   initial?: AccommodationLineData;
   lineItemId?: string;
   onClose: () => void;
@@ -32,30 +41,23 @@ export function AccommodationItemForm({
   const [loadingInitial, setLoadingInitial] = useState(!!initial);
   const [roomTypeId, setRoomTypeId] = useState(initial?.roomTypeId ?? "");
   const [comboKey, setComboKey] = useState(initial ? `${initial.season}__${initial.mealPlan}` : "");
-  const [adultsSharing, setAdultsSharing] = useState(
-    initial?.basis.pricingBasis === "PER_PERSON" ? initial.basis.adultsSharing : quote.adults
-  );
-  const [child5to12, setChild5to12] = useState(
-    initial?.basis.pricingBasis === "PER_PERSON" ? initial.basis.child5to12 : quote.children5to12
-  );
-  const [childUnder5, setChildUnder5] = useState(
-    initial?.basis.pricingBasis === "PER_PERSON" ? initial.basis.childUnder5 : quote.childrenUnder5
-  );
-  const [adultsSingle, setAdultsSingle] = useState(
-    initial?.basis.pricingBasis === "PER_PERSON" ? initial.basis.adultsSingle : 0
-  );
-  const [infoRooms, setInfoRooms] = useState(
-    (initial?.basis.pricingBasis === "PER_PERSON" ? initial.basis.totalRooms : null) ?? 0
-  );
-  const [infoSingleRooms, setInfoSingleRooms] = useState(
-    (initial?.basis.pricingBasis === "PER_PERSON" ? initial.basis.singleRooms : null) ?? 0
-  );
+  const initialPerPerson =
+    initial && !isLegacyPerPersonBasis(initial.basis) && initial.basis.pricingBasis === "PER_PERSON" ? initial.basis : null;
+  const [adultsSharing, setAdultsSharing] = useState(initialPerPerson?.adultsSharing ?? quote.adults);
+  const [adultsSingle, setAdultsSingle] = useState(initialPerPerson?.adultsSingle ?? 0);
+  // Accommodation always prices every child on the trip (unlike Park
+  // Entrance Fees, which supports excluding individual travellers).
+  const childAges = quote.childAges;
+  const [infoRooms, setInfoRooms] = useState(initialPerPerson?.totalRooms ?? 0);
+  const [infoSingleRooms, setInfoSingleRooms] = useState(initialPerPerson?.singleRooms ?? 0);
   const [roomTotalRooms, setRoomTotalRooms] = useState(
     initial?.basis.pricingBasis === "PER_ROOM" ? initial.basis.totalRooms : 1
   );
   const [roomSingleRooms, setRoomSingleRooms] = useState(
     initial?.basis.pricingBasis === "PER_ROOM" ? initial.basis.singleRooms : 0
   );
+  const [manualAmount, setManualAmount] = useState(0);
+  const [manualCurrency, setManualCurrency] = useState<Currency>("USD");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -100,22 +102,33 @@ export function AccommodationItemForm({
 
   const selectedRate = comboOptions.find((c) => c.key === comboKey)?.rate ?? null;
 
-  const preview = useMemo(() => {
-    if (!accommodation || !selectedRate) return null;
-    if (accommodation.pricingBasis === "PER_PERSON") {
-      if (selectedRate.adultSharingCents == null) return null;
-      return computeAccommodationPerPerson(
-        {
-          adultSharingCents: selectedRate.adultSharingCents,
-          child5to12Cents: selectedRate.child5to12Cents,
-          childUnder5Cents: selectedRate.childUnder5Cents,
-          singleCents: selectedRate.singleCents,
-        },
-        { adultsSharing, child5to12, childUnder5, adultsSingle },
-        accommodation.currency,
-        quote.rateMicros
-      );
-    }
+  const bracketRates = useMemo(() => {
+    if (!accommodation || !selectedRate) return [];
+    return accommodation.childAgeBrackets
+      .map((b) => {
+        const priceCents = selectedRate.childRates.find((cr) => cr.bracketId === b.id)?.priceCents;
+        return priceCents == null ? null : { id: b.id, minAge: b.minAge, maxAge: b.maxAge, label: b.label, priceCents };
+      })
+      .filter((b): b is { id: string; minAge: number; maxAge: number; label: string | null; priceCents: number } => b !== null);
+  }, [accommodation, selectedRate]);
+
+  const perPersonResult = useMemo(() => {
+    if (!accommodation || !selectedRate || accommodation.pricingBasis !== "PER_PERSON") return null;
+    if (selectedRate.adultSharingCents == null) return null;
+    return computeAccommodationPerPersonWithChildren(
+      selectedRate.adultSharingCents,
+      selectedRate.singleCents,
+      bracketRates,
+      childAges,
+      adultsSharing,
+      adultsSingle,
+      accommodation.currency,
+      quote.rateMicros
+    );
+  }, [accommodation, selectedRate, bracketRates, childAges, adultsSharing, adultsSingle, quote.rateMicros]);
+
+  const perRoomResult = useMemo(() => {
+    if (!accommodation || !selectedRate || accommodation.pricingBasis !== "PER_ROOM") return null;
     if (selectedRate.standardRoomCents == null) return null;
     return computeAccommodationPerRoom(
       { standardRoomCents: selectedRate.standardRoomCents, singleRoomCents: selectedRate.singleRoomCents },
@@ -123,13 +136,33 @@ export function AccommodationItemForm({
       accommodation.currency,
       quote.rateMicros
     );
-  }, [accommodation, selectedRate, adultsSharing, child5to12, childUnder5, adultsSingle, roomTotalRooms, roomSingleRooms, quote.rateMicros]);
+  }, [accommodation, selectedRate, roomTotalRooms, roomSingleRooms, quote.rateMicros]);
+
+  const hasUnmatchedChildren = perPersonResult != null && !perPersonResult.ok;
+
+  // Unified figure for the preview box: the successfully computed
+  // per-person/per-room total, or the manual rescue total once unmatched
+  // children are resolved that way.
+  const previewTotal =
+    perRoomResult ??
+    (perPersonResult?.ok ? perPersonResult : null) ??
+    (hasUnmatchedChildren && manualAmount > 0
+      ? {
+          originalTotalCents: amountToCents(manualAmount),
+          usdTotalCents: toUsdCents(amountToCents(manualAmount), manualCurrency, quote.rateMicros),
+        }
+      : null);
+  const previewCurrency = hasUnmatchedChildren && manualAmount > 0 ? manualCurrency : accommodation?.currency;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     if (!accommodation || !roomTypeId || !selectedRate) {
       setError("Select an accommodation, room type, season and meal plan.");
+      return;
+    }
+    if (hasUnmatchedChildren && manualAmount <= 0) {
+      setError("Enter a manual total to proceed, or add a matching child age bracket in the Rate Library.");
       return;
     }
     setSaving(true);
@@ -141,13 +174,13 @@ export function AccommodationItemForm({
         season: selectedRate.season,
         mealPlan: selectedRate.mealPlan,
         adultsSharing,
-        child5to12,
-        childUnder5,
         adultsSingle,
+        childAges,
         totalRooms: infoRooms || null,
         singleRooms: infoSingleRooms || null,
         roomTotalRooms,
         roomSingleRooms: Math.min(roomSingleRooms, roomTotalRooms),
+        manualTotalOverride: hasUnmatchedChildren ? { amount: manualAmount, currency: manualCurrency } : undefined,
       };
       if (lineItemId) {
         await updateAccommodationLineItem(lineItemId, payload);
@@ -223,24 +256,59 @@ export function AccommodationItemForm({
                 <Label>Adults sharing</Label>
                 <Stepper value={adultsSharing} onChange={setAdultsSharing} min={0} />
               </div>
-              {selectedRate.child5to12Cents != null && (
-                <div>
-                  <Label>Children 5–12</Label>
-                  <Stepper value={child5to12} onChange={setChild5to12} min={0} />
-                </div>
-              )}
-              {selectedRate.childUnder5Cents != null && (
-                <div>
-                  <Label>Children under 5</Label>
-                  <Stepper value={childUnder5} onChange={setChildUnder5} min={0} />
-                </div>
-              )}
               {selectedRate.singleCents != null && (
                 <div>
                   <Label>Adults in single occupancy</Label>
                   <Stepper value={adultsSingle} onChange={setAdultsSingle} min={0} />
                 </div>
               )}
+
+              {childAges.length > 0 && (
+                <div className="border-t border-border pt-4">
+                  <Label>Children travelling (from trip passengers)</Label>
+                  <p className="text-[12px] text-muted">
+                    Ages: {childAges.join(", ")} — matched automatically against {accommodation.name}&rsquo;s age brackets below.
+                  </p>
+                  <ul className="mt-2 space-y-1 text-[13px]">
+                    {bracketRates.map((b) => {
+                      const ages = childAges.filter((age) => age >= b.minAge && age <= b.maxAge);
+                      if (ages.length === 0) return null;
+                      return (
+                        <li key={b.id} className="flex items-center justify-between">
+                          <span>
+                            {bracketLabel(b)}: {ages.length} child{ages.length !== 1 ? "ren" : ""}, age{ages.length !== 1 ? "s" : ""}{" "}
+                            {ages.join(", ")}
+                          </span>
+                          <span className="font-medium text-foreground">
+                            {ages.length} × {formatMoney(b.priceCents, accommodation.currency)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
+
+              {hasUnmatchedChildren && perPersonResult && !perPersonResult.ok && (
+                <div className="rounded-xl bg-amber-50 p-3 text-[13px] text-amber-800">
+                  <p>
+                    No child rate configured for age{perPersonResult.unmatchedAges.length !== 1 ? "s" : ""}{" "}
+                    {perPersonResult.unmatchedAges.join(", ")} at {accommodation.name}. Add a matching age bracket in the Rate Library, or
+                    enter a manual total below to proceed.
+                  </p>
+                  <div className="mt-2">
+                    <MoneyField
+                      amount={manualAmount}
+                      currency={manualCurrency}
+                      onAmountChange={setManualAmount}
+                      onCurrencyChange={setManualCurrency}
+                      rateMicros={quote.rateMicros}
+                      placeholder="Manual total for this accommodation"
+                    />
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4 border-t border-border pt-4">
                 <div>
                   <Label>Total rooms (informational)</Label>
@@ -268,10 +336,13 @@ export function AccommodationItemForm({
             </div>
           )}
 
-          {preview && (
+          {previewTotal && previewCurrency && (
             <div className="rounded-xl bg-sage-50 px-4 py-3 text-sm font-medium text-sage-700">
-              Total: {formatMoney(preview.originalTotalCents, accommodation.currency)}
-              {accommodation.currency !== "USD" && <span className="ml-1 font-normal text-muted">({formatMoney(preview.usdTotalCents, "USD")})</span>}
+              {hasUnmatchedChildren ? "Total (manual): " : "Total: "}
+              {formatMoney(previewTotal.originalTotalCents, previewCurrency)}
+              {previewCurrency !== "USD" && (
+                <span className="ml-1 font-normal text-muted">({formatMoney(previewTotal.usdTotalCents, "USD")})</span>
+              )}
             </div>
           )}
         </>
@@ -282,7 +353,7 @@ export function AccommodationItemForm({
         <Button type="button" variant="secondary" onClick={onClose}>
           Cancel
         </Button>
-        <Button type="submit" variant="primary" disabled={saving || !preview}>
+        <Button type="submit" variant="primary" disabled={saving || !previewTotal}>
           {saving ? "Saving…" : "Save"}
         </Button>
       </div>

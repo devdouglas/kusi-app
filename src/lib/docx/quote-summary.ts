@@ -1,8 +1,9 @@
 import { Document, Packer, Paragraph, TextRun, HeadingLevel, BorderStyle } from "docx";
 import type { DerivedQuote, DerivedDay, DerivedLineItem } from "@/lib/quote/derive";
-import { formatUsd } from "@/lib/money";
+import { formatMoney, formatUsd } from "@/lib/money";
 import { formatFullDate } from "@/lib/calc/trip-dates";
-import { CATEGORY_LABELS, MEAL_PLAN_LABELS, SEASON_LABELS } from "@/types/line-items";
+import { formatChildrenSummary } from "@/lib/calc/children";
+import { CATEGORY_LABELS, MEAL_PLAN_LABELS, SEASON_LABELS, isLegacyPerPersonBasis } from "@/types/line-items";
 
 const SAGE = "8A9270";
 const CHARCOAL = "2B2B27";
@@ -18,15 +19,26 @@ function kv(label: string, value: string) {
   });
 }
 
-/** One or two lines describing a line item, mirroring the in-app display. */
+/** "N child(ren) age(s) A and B × USD Z" — one line per matched bracket. */
+function formatBracketLine(ages: number[], priceCents: number, currency: DerivedLineItem["originalCurrency"]): string {
+  const noun = ages.length === 1 ? "child" : "children";
+  const ageWord = ages.length === 1 ? "age" : "ages";
+  const sorted = [...ages].sort((a, b) => a - b);
+  return `${ages.length} ${noun} ${ageWord} ${sorted.join(", ")} × ${formatMoney(priceCents, currency)}`;
+}
+
+/** Title line plus any number of detail lines describing a line item, mirroring the in-app display. */
 function lineItemDescription(li: DerivedLineItem): string[] {
   const d = li.parsedData;
   switch (d.category) {
     case "ACCOMMODATION": {
-      const lines = [
-        `${d.accommodationName} — ${d.roomTypeName}`,
-        `${MEAL_PLAN_LABELS[d.mealPlan]} — ${SEASON_LABELS[d.season]}`,
-      ];
+      const title = `${d.accommodationName} — ${d.roomTypeName}`;
+      const lines = [title, `${MEAL_PLAN_LABELS[d.mealPlan]} — ${SEASON_LABELS[d.season]}`];
+      if (!isLegacyPerPersonBasis(d.basis) && d.basis.pricingBasis === "PER_PERSON") {
+        for (const bracket of d.basis.childBrackets) {
+          lines.push(formatBracketLine(bracket.ages, bracket.priceCents, d.currency));
+        }
+      }
       return lines;
     }
     case "PRIVATE_TRANSPORT":
@@ -37,6 +49,14 @@ function lineItemDescription(li: DerivedLineItem): string[] {
       return [li.description, `${d.vehicles} vehicle${d.vehicles !== 1 ? "s" : ""}`];
     case "ACTIVITY":
       return [li.description, `${d.participants} participant${d.participants !== 1 ? "s" : ""}`];
+    case "PARK_ENTRANCE_FEE": {
+      const lines = [li.description];
+      if (d.adults > 0) lines.push(`${d.adults} adult${d.adults !== 1 ? "s" : ""} × ${formatMoney(d.adultFeeCents, d.currency)}`);
+      for (const bracket of d.childBrackets) {
+        lines.push(formatBracketLine(bracket.ages, bracket.priceCents, d.currency));
+      }
+      return lines;
+    }
     case "DOMESTIC_FLIGHT":
       return [li.description, `${d.passengers} passenger${d.passengers !== 1 ? "s" : ""}`];
     case "VILLA":
@@ -49,7 +69,7 @@ function lineItemDescription(li: DerivedLineItem): string[] {
 }
 
 function lineItemParagraphs(li: DerivedLineItem): Paragraph[] {
-  const [title, detail] = lineItemDescription(li);
+  const [title, ...detailLines] = lineItemDescription(li);
   const paragraphs: Paragraph[] = [
     new Paragraph({
       spacing: { before: 100, after: 20 },
@@ -60,7 +80,7 @@ function lineItemParagraphs(li: DerivedLineItem): Paragraph[] {
       children: [new TextRun({ text: title, color: CHARCOAL })],
     }),
   ];
-  if (detail) {
+  for (const detail of detailLines) {
     paragraphs.push(
       new Paragraph({
         spacing: { after: 10 },
@@ -107,7 +127,7 @@ function dayCell(day: DerivedDay): Paragraph[] {
 }
 
 export async function generateQuoteSummaryDocx(derived: DerivedQuote): Promise<Buffer> {
-  const { quote, days, totalPax, numberOfDays, numberOfNights, travelPeriod, privateVehicleDays, totalUsdCents, perPersonUsdCents } =
+  const { quote, days, totalPax, childAges, numberOfDays, numberOfNights, travelPeriod, privateVehicleDays, totalUsdCents, perPersonUsdCents } =
     derived;
 
   const headerLines: Paragraph[] = [
@@ -121,8 +141,8 @@ export async function generateQuoteSummaryDocx(derived: DerivedQuote): Promise<B
     kv("Passengers", String(totalPax)),
     kv("Adults", String(quote.adults)),
   ];
-  if (quote.children5to12 > 0) headerLines.push(kv("Children 5–12", String(quote.children5to12)));
-  if (quote.childrenUnder5 > 0) headerLines.push(kv("Children under 5", String(quote.childrenUnder5)));
+  const childrenSummary = formatChildrenSummary(childAges);
+  if (childrenSummary) headerLines.push(kv("Children", childrenSummary));
   headerLines.push(
     kv("Duration", `${numberOfDays} days / ${numberOfNights} nights`),
     kv("Private vehicle days", String(privateVehicleDays)),

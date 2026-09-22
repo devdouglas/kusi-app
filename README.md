@@ -50,6 +50,7 @@ Full stack locally: `docker compose up --build` → http://localhost:3000
 | `npm run test` | Run the unit + integration test suite (spins up `prisma/test.db`) |
 | `npm run seed` | Insert a small set of demo Rate Library entries (safe to re-run) |
 | `npm run lint` | ESLint |
+| `npx tsx prisma/scripts/migrate-legacy-children.ts` | One-off: converts old fixed child categories to the exact-age model. See "Migrating existing child-pricing data" below — only relevant between the additive and contract migrations. |
 
 ## Architecture
 
@@ -112,6 +113,82 @@ for accommodation, vehicle type for transport, class for train, and so on.
 Common fields that every category shares (currency, totals, manual-override
 bookkeeping) are real columns so totals can be summed without parsing JSON.
 
+### Daily Totals
+
+Each day's total (`DerivedDay.dayTotalUsdCents` in `src/lib/quote/derive.ts`)
+is a pure aggregation — `sum(day.lineItems.map(li => li.totalUsdCents))` —
+computed independently from the trip-level total, which is itself
+`sum(all line items across all days)`. Both figures are derived from the
+same flat list of line items, so the sum of every Day Total always equals
+the Total Party price by construction; there is no code path that adds a
+Day Total to the trip total, so double counting isn't structurally
+possible. This already reflects manual overrides and KES conversions,
+since both are baked into each line item's `totalUsdCents` before the
+aggregation ever runs.
+
+### Exact child ages and accommodation/park-specific age brackets
+
+Children are stored on the quote as one `QuoteChild` row per child with an
+**exact age** (`0`–`15`), never only an aggregated category — the same
+age can then be matched against a different bracket for every supplier,
+because brackets are never global:
+
+- `AccommodationChildAgeBracket` (+ `AccommodationChildRate`, one price per
+  bracket per rate row) belongs to a single `Accommodation`.
+- `ParkChildAgeBracket` belongs to a single `Park`, and carries its own
+  price directly (a park has one flat rate, unlike accommodation's
+  room/season/meal-plan matrix, so there's no separate join table).
+
+Matching, range validation (`0 ≤ min ≤ max ≤ 15`) and overlap detection are
+shared, provider-agnostic functions in `src/lib/calc/child-brackets.ts`.
+When a child's age matches no configured bracket, the calculation
+functions (`computeAccommodationPerPersonWithChildren`,
+`computeParkEntranceFee`) return `{ ok: false, unmatchedAges }` rather than
+guessing a price; the server actions turn that into a clear error
+(`No child rate configured for age 14 at …`) unless the consultant
+supplies an explicit manual total to proceed, which is recorded as a
+`manualOverride` line item with no library figure to revert to.
+
+Park Entrance Fee line items also support the same "adjust who's included"
+pattern per spec: the adult count can be reduced and individual children
+toggled off for that one line item without touching the quote's own
+passenger composition.
+
+### Migrating existing child-pricing data
+
+This schema change (removing the old fixed `children5to12` /
+`childrenUnder5` / `child5to12Cents` / `childUnder5Cents` columns) used an
+**expand → migrate data → contract** sequence rather than a single
+destructive migration:
+
+1. `20260922123453_add_child_brackets_and_parks` — additive only: adds
+   `QuoteChild`, `AccommodationChildAgeBracket`, `AccommodationChildRate`,
+   `Park`, `ParkChildAgeBracket`, while leaving the old columns in place.
+2. `prisma/scripts/migrate-legacy-children.ts` — a standalone, idempotent
+   script that reads the old columns via raw SQL (since by the time it's
+   safe to run, the *current* generated Prisma Client may already have
+   dropped them from its types) and writes the new rows: each quote's
+   aggregate child counts become `QuoteChild` rows with `age: null` and a
+   `legacyLabel` (`"5-12"`, `"Under 5"`) — **exact ages are never invented**
+   — and each accommodation's old child prices become two representative
+   brackets (`0–4`, `5–12`) carrying the old per-bracket prices forward.
+3. `20260922130000_drop_legacy_child_columns` — drops the now-migrated old
+   columns.
+
+This repository had no real historical quote data at the time of this
+change (only local seed/test data), so a clean migration would have been
+acceptable per the brief — but the expand/migrate/contract sequence was
+used anyway, and the migration script was actually run against local data
+(converting the seeded Samburu Intrepids rates) rather than merely written,
+so the same sequence is proven safe to run again if Kusi ever needs it
+against real data before deploying this change. Existing `QuoteLineItem`
+accommodation snapshots are **never rewritten** by this migration — they're
+immutable historical records already, so `AccommodationLineData` keeps a
+`AccommodationPerPersonDataLegacy` variant purely for **display**: old
+quotes still render their frozen `child5to12` / `childUnder5` breakdown
+correctly, and `deriveQuote` exposes `hasLegacyChildren` so the UI can
+acknowledge a quote has an unconvertible legacy child if needed.
+
 ### Future margin / selling-price architecture
 
 Version 1 only ever calculates **cost**. The `Quote` model already has
@@ -138,6 +215,16 @@ A few judgment calls where the spec allowed for a sensible default:
 - **Editing trip dates** on an existing quote keeps line items on days whose
   date is still in range, and drops items on days that fall outside the new
   range (cascade delete) — there's no "orphaned day" concept in the schema.
+- **Park Entrance Fees have no "Other / Manual Park" pinned option** (unlike
+  Taxi Transfer and Domestic Flight) since the spec only describes searching
+  the Rate Library for parks; a manual-total rescue path still exists, but
+  only when a travelling child's age matches no configured bracket.
+- **A Tailwind `cn()` helper (`clsx` + `tailwind-merge`) was added** for
+  every shared UI primitive that accepts a caller `className` alongside its
+  own base classes (`Input`, `Select`, `Textarea`, `Button`, `Card`,
+  `Stepper`). Plain `clsx` doesn't resolve conflicting utilities (e.g. a
+  caller's `w-24` losing to the component's own `w-full`) deterministically
+  — this had already surfaced as a real, silently-broken layout in one form.
 
 ## Tests
 
@@ -145,8 +232,16 @@ A few judgment calls where the spec allowed for a sensible default:
 npm run test
 ```
 
-25 tests covering: currency conversion and formatting, every category's
+61 tests covering: currency conversion and formatting, every category's
 pricing rule (accommodation per-person and per-room, transport, train,
-transfer, activity, flight, villa, misc), trip date / private-vehicle-day
-math, quote totals and price-per-person, and the two historical-snapshot
-integration scenarios described above.
+transfer, activity, park entrance fee, flight, villa, misc), child age
+bracket matching/validation/overlap detection (including the same age
+mapping to different brackets for different suppliers), trip date /
+private-vehicle-day math, quote totals and price-per-person, Daily Totals
+(correct aggregation, updates on quantity/override/KES changes, sum equals
+Total Party with no double counting), and integration scenarios run
+against a real database: the two historical-snapshot scenarios (Rate
+Library price change, exchange rate change), accommodation bracket
+matching end-to-end, the missing-bracket error path, Park Entrance Fees
+(adults + children, KES, manual override, excluding one traveller), and a
+legacy quote (old child-category shape) rendering without error.

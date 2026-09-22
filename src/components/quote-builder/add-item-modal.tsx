@@ -8,6 +8,7 @@ import { TransportItemForm } from "./forms/transport-item-form";
 import { TrainItemForm } from "./forms/train-item-form";
 import { TransferItemForm } from "./forms/transfer-item-form";
 import { ActivityItemForm } from "./forms/activity-item-form";
+import { ParkItemForm } from "./forms/park-item-form";
 import { FlightItemForm } from "./forms/flight-item-form";
 import { VillaItemForm } from "./forms/villa-item-form";
 import { MiscItemForm } from "./forms/misc-item-form";
@@ -18,6 +19,7 @@ const CATEGORY_ORDER: LineItemCategory[] = [
   "TRAIN",
   "TAXI_TRANSFER",
   "ACTIVITY",
+  "PARK_ENTRANCE_FEE",
   "DOMESTIC_FLIGHT",
   "VILLA",
   "MISC",
@@ -31,6 +33,13 @@ export interface EditContext {
   quantity: number | null;
 }
 
+export interface QuoteBuilderContext {
+  rateMicros: number;
+  adults: number;
+  childAges: number[];
+  totalPax: number;
+}
+
 export function AddItemModal({
   dayId,
   quote,
@@ -39,7 +48,7 @@ export function AddItemModal({
   onSaved,
 }: {
   dayId: string;
-  quote: { rateMicros: number; adults: number; children5to12: number; childrenUnder5: number; totalPax: number };
+  quote: QuoteBuilderContext;
   edit?: EditContext | null;
   onClose: () => void;
   onSaved: () => void;
@@ -73,7 +82,7 @@ export function AddItemModal({
 function renderForm(
   category: LineItemCategory,
   dayId: string,
-  quote: { rateMicros: number; adults: number; children5to12: number; childrenUnder5: number; totalPax: number },
+  quote: QuoteBuilderContext,
   edit: EditContext | null | undefined,
   onClose: () => void,
   onSaved: () => void
@@ -130,6 +139,17 @@ function renderForm(
           dayId={dayId}
           quote={quote}
           initial={edit?.data.category === "ACTIVITY" ? edit.data : undefined}
+          lineItemId={edit?.lineItemId}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      );
+    case "PARK_ENTRANCE_FEE":
+      return (
+        <ParkItemForm
+          dayId={dayId}
+          quote={quote}
+          initial={edit?.data.category === "PARK_ENTRANCE_FEE" ? edit.data : undefined}
           lineItemId={edit?.lineItemId}
           onClose={onClose}
           onSaved={onSaved}

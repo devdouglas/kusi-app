@@ -16,10 +16,6 @@ export function computeQuoteTotals(
   return { totalUsdCents, totalPax, perPersonUsdCents };
 }
 
-export function computeTotalPax(
-  adults: number,
-  children5to12: number,
-  childrenUnder5: number
-): number {
-  return adults + children5to12 + childrenUnder5;
+export function computeTotalPax(adults: number, childrenCount: number): number {
+  return adults + childrenCount;
 }

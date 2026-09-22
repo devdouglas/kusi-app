@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label, FormRow } from "@/components/ui/field";
 import { Stepper } from "@/components/ui/stepper";
 import { Modal } from "@/components/ui/modal";
+import { ChildAgesEditor } from "./child-ages-editor";
 import type { Quote } from "@prisma/client";
 
 function toDateInput(d: Date) {
@@ -14,10 +15,12 @@ function toDateInput(d: Date) {
 
 export function TripHeaderForm({
   quote,
+  childAges: initialChildAges,
   onClose,
   onSaved,
 }: {
   quote: Quote;
+  childAges: number[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -26,11 +29,16 @@ export function TripHeaderForm({
   const [startDate, setStartDate] = useState(toDateInput(quote.startDate));
   const [endDate, setEndDate] = useState(toDateInput(quote.endDate));
   const [adults, setAdults] = useState(quote.adults);
-  const [hasChildren, setHasChildren] = useState(quote.children5to12 > 0 || quote.childrenUnder5 > 0);
-  const [children5to12, setChildren5to12] = useState(quote.children5to12);
-  const [childrenUnder5, setChildrenUnder5] = useState(quote.childrenUnder5);
+  const [childAges, setChildAges] = useState<number[]>(initialChildAges);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+
+  function setChildrenCount(count: number) {
+    setChildAges((ages) => {
+      if (count <= ages.length) return ages.slice(0, count);
+      return [...ages, ...Array(count - ages.length).fill(0)];
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -47,8 +55,7 @@ export function TripHeaderForm({
         startDate: new Date(startDate),
         endDate: new Date(endDate),
         adults,
-        children5to12: hasChildren ? children5to12 : 0,
-        childrenUnder5: hasChildren ? childrenUnder5 : 0,
+        children: childAges.map((age) => ({ age })),
       });
       onSaved();
     } catch (err) {
@@ -88,29 +95,18 @@ export function TripHeaderForm({
         <div className="border-t border-border pt-4">
           <Label>Adults</Label>
           <Stepper value={adults} onChange={setAdults} min={1} />
-          {!hasChildren ? (
-            <button type="button" onClick={() => setHasChildren(true)} className="mt-3 text-[13px] font-medium text-sage-700 hover:underline">
+          {childAges.length === 0 ? (
+            <button type="button" onClick={() => setChildrenCount(1)} className="mt-3 text-[13px] font-medium text-sage-700 hover:underline">
               + Add children
             </button>
           ) : (
             <div className="mt-4 space-y-4">
               <div>
-                <Label>Children 5–12</Label>
-                <Stepper value={children5to12} onChange={setChildren5to12} min={0} />
+                <Label>Children</Label>
+                <Stepper value={childAges.length} onChange={setChildrenCount} min={0} />
               </div>
-              <div>
-                <Label>Children under 5</Label>
-                <Stepper value={childrenUnder5} onChange={setChildrenUnder5} min={0} />
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setHasChildren(false);
-                  setChildren5to12(0);
-                  setChildrenUnder5(0);
-                }}
-                className="text-[13px] font-medium text-muted hover:underline"
-              >
+              <ChildAgesEditor ages={childAges} onChange={setChildAges} />
+              <button type="button" onClick={() => setChildAges([])} className="text-[13px] font-medium text-muted hover:underline">
                 Remove children
               </button>
             </div>
