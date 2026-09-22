@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import clsx from "clsx";
+import packageJson from "../../package.json";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
@@ -27,12 +28,17 @@ export function AppShell({ children }: { children: ReactNode }) {
     <div className="min-h-full flex flex-col">
       <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl items-center gap-8 px-6 py-3">
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-500 text-sm font-semibold text-white">
-              K
+          <Link href="/" className="flex shrink-0 flex-col">
+            <span className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-full bg-sage-500 text-sm font-semibold text-white">
+                K
+              </span>
+              <span className="text-[15px] font-semibold tracking-tight text-foreground">
+                Kusi Safaris <span className="font-normal text-muted">Rates &amp; Quotes</span>
+              </span>
             </span>
-            <span className="text-[15px] font-semibold tracking-tight text-foreground">
-              Kusi Safaris <span className="font-normal text-muted">Rates &amp; Quotes</span>
+            <span className="pl-[42px] text-[11px] font-medium text-muted">
+              v{packageJson.version}
             </span>
           </Link>
           <nav className="flex items-center gap-1">
