@@ -14,6 +14,78 @@ costings day by day.
 - **docx** for generating the internal Word quote summary
 - **Vitest** for unit + integration tests
 
+## Agent / contributor notes (Prisma, Docker, Dokploy)
+
+**Read this before changing `prisma/schema.prisma`, adding migrations, or
+touching `Dockerfile` / deploy config.**
+
+### PostgreSQL only
+
+- `datasource` provider is **`postgresql`** everywhere (local, CI, production).
+  **Do not** generate or commit SQLite migrations (`DATETIME`, `PRAGMA`,
+  SQLite-style `RedefineTables`, enum columns as plain `TEXT` where Postgres
+  uses `"Currency"` / native enums, etc.). Production runs the same SQL as
+  local; SQLite-only migrations will fail on deploy (often at `DATETIME` or
+  `PRAGMA`) and leave a **P3009** failed migration.
+- After schema changes, create migrations against Postgres, e.g. local DB up
+  via `docker compose -f docker-compose.dev.yml up -d`, then
+  `npx prisma migrate dev --name …`. Alternatively
+  `npx prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --script`
+  and review the SQL before committing.
+- `migration_lock.toml` must stay `provider = "postgresql"`.
+
+### What production deploy runs
+
+- **Docker entrypoint** (`docker/entrypoint.sh`): `prisma migrate deploy` →
+  optional seed if `RUN_SEED=true` → `node server.js`.
+- **`next build` must not require a live DB**: root layout sets
+  `export const dynamic = "force-dynamic"` so Prisma-backed pages are not
+  pre-rendered at image build time.
+- **`migrate deploy` applies every pending migration in one go** — there is
+  no hook between migration files. If you use **expand → data script →
+  contract**, you must either:
+  - run the data script **manually** on production between deploys (apply
+    additive migration, exec `npx tsx prisma/scripts/migrate-legacy-children.ts`,
+    then deploy again with contract migration), or
+  - fold data backfills into SQL in the additive migration, or
+  - accept that contract migrations run immediately after additive ones on
+    the next deploy (fine when prod has no legacy rows to preserve).
+
+### Dokploy (production)
+
+| Item | Value |
+| --- | --- |
+| Build | **Dockerfile** at repo root, or **Compose** with `docker-compose.dokploy.yml` (joins `dokploy-network` for internal DB hostnames like `kusi-db-*`) |
+| Database | Managed **PostgreSQL 16**; `DATABASE_URL` = **internal** connection URL from Dokploy |
+| Domain | e.g. `app.kusisafaris.com` → container port **3000** (not 80) |
+| Env | `DATABASE_URL` (required), `NODE_ENV=production`, `HOSTNAME=0.0.0.0`, `PORT=3000`; `RUN_SEED=true` **once** for demo data then remove/disable |
+| Logs | Use **container/runtime** logs, not build logs — look for `Starting Next.js...` |
+
+Internal DB hostnames only resolve when the app container is on
+`dokploy-network` (Compose file above, or domain attached on Application
+deploy per Dokploy behavior).
+
+### Failed migration recovery (P3009)
+
+If deploy logs show `P3009` / a named migration **failed**:
+
+1. Fix the migration SQL in git (Postgres-compatible) and push.
+2. On the server, once, with the same `DATABASE_URL` as the app:
+
+   ```bash
+   ./node_modules/.bin/prisma migrate resolve --rolled-back "MIGRATION_FOLDER_NAME"
+   ```
+
+   Example:
+   `20260922123453_add_child_brackets_and_parks`
+
+3. If a failed run left stray objects (unusual when Postgres rolls back the
+   transaction), drop partial tables/enums manually, then redeploy.
+4. Redeploy so `migrate deploy` can re-apply.
+
+Do **not** edit applied migration files in place on production without
+`migrate resolve`; checksums and `_prisma_migrations` must stay consistent.
+
 ## Getting started
 
 ```bash
@@ -29,15 +101,14 @@ Open http://localhost:3000.
 
 ## Docker / Dokploy
 
+See **[Agent / contributor notes](#agent--contributor-notes-prisma-docker-dokploy)**
+for env vars, networking, migration rules, and P3009 recovery.
+
 | Dokploy setup | Build type | Database |
 | --- | --- | --- |
-| **Application** (recommended) | **Dockerfile** at repo root | Create **PostgreSQL** in Dokploy; set `DATABASE_URL` to the **internal** connection URL |
-| **Docker Compose** | `docker-compose.dokploy.yml` | Managed Postgres in Dokploy — **required** so the app joins `dokploy-network` and resolves `kusi-db-*` hosts |
-| **Docker Compose (local full stack)** | `docker-compose.yml` | Bundled `postgres:16-alpine` |
-
-1. Add a **domain** on the app service (required for Traefik and for reaching internal DB URLs from the container).
-2. Set env: `DATABASE_URL`, optionally `RUN_SEED=true` once for demo data.
-3. Deploy — the entrypoint runs `prisma migrate deploy` before `next start`.
+| **Application** | **Dockerfile** at repo root | Managed Postgres; internal `DATABASE_URL` |
+| **Docker Compose** | `docker-compose.dokploy.yml` | Same; app service must use `dokploy-network` |
+| **Local full stack** | `docker-compose.yml` | Bundled `postgres:16-alpine` |
 
 Full stack locally: `docker compose up --build` → http://localhost:3000
 
@@ -47,7 +118,7 @@ Full stack locally: `docker compose up --build` → http://localhost:3000
 | --- | --- |
 | `npm run dev` | Start the dev server |
 | `npm run build` | Production build |
-| `npm run test` | Run the unit + integration test suite (spins up `prisma/test.db`) |
+| `npm run test` | Run the unit + integration test suite (needs Postgres; see `vitest.config.ts`) |
 | `npm run seed` | Insert a small set of demo Rate Library entries (safe to re-run) |
 | `npm run lint` | ESLint |
 | `npx tsx prisma/scripts/migrate-legacy-children.ts` | One-off: converts old fixed child categories to the exact-age model. See "Migrating existing child-pricing data" below — only relevant between the additive and contract migrations. |
@@ -174,6 +245,11 @@ destructive migration:
    brackets (`0–4`, `5–12`) carrying the old per-bracket prices forward.
 3. `20260922130000_drop_legacy_child_columns` — drops the now-migrated old
    columns.
+
+**Production / Docker:** the entrypoint only runs `migrate deploy`, so steps
+1 and 3 run back-to-back on the same deploy. Run step 2 manually between
+deploys if production still has rows in the legacy columns (see
+[Agent / contributor notes](#agent--contributor-notes-prisma-docker-dokploy)).
 
 This repository had no real historical quote data at the time of this
 change (only local seed/test data), so a clean migration would have been
