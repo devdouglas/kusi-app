@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { createAccommodation, updateAccommodation } from "@/lib/actions/rate-library";
+import { validateBracketSet } from "@/lib/calc/child-brackets";
 import { centsToAmount, type Currency } from "@/lib/money";
 import { SEASON_LABELS, type Season, type MealPlan, type PricingBasis } from "@/types/line-items";
 import { Button } from "@/components/ui/button";
@@ -17,17 +18,17 @@ export interface AccommodationRecord {
   pricingBasis: PricingBasis;
   archived: boolean;
   roomTypes: { id: string; name: string; sortOrder: number }[];
+  childAgeBrackets: { id: string; minAge: number; maxAge: number; label: string | null; sortOrder: number }[];
   rates: {
     id: string;
     roomTypeId: string;
     season: Season;
     mealPlan: MealPlan;
     adultSharingCents: number | null;
-    child5to12Cents: number | null;
-    childUnder5Cents: number | null;
     singleCents: number | null;
     standardRoomCents: number | null;
     singleRoomCents: number | null;
+    childRates: { bracketId: string; priceCents: number }[];
   }[];
 }
 
@@ -36,15 +37,22 @@ interface RoomTypeRow {
   name: string;
 }
 
+interface BracketRow {
+  key: string;
+  minAge: string;
+  maxAge: string;
+  label: string;
+}
+
 interface RateRow {
   key: string;
   roomTypeKey: string;
   season: Season;
   mealPlan: MealPlan;
   adultSharing: string;
-  child5to12: string;
-  childUnder5: string;
   single: string;
+  /** bracket local key -> price string */
+  childPrices: Record<string, string>;
   standardRoom: string;
   singleRoom: string;
 }
@@ -63,6 +71,16 @@ function toRoomTypeRows(initial: AccommodationRecord | null): RoomTypeRow[] {
   return initial.roomTypes.map((rt) => ({ key: rt.id, name: rt.name }));
 }
 
+function toBracketRows(initial: AccommodationRecord | null): BracketRow[] {
+  if (!initial) return [];
+  return initial.childAgeBrackets.map((b) => ({
+    key: b.id,
+    minAge: String(b.minAge),
+    maxAge: String(b.maxAge),
+    label: b.label ?? "",
+  }));
+}
+
 function toRateRows(initial: AccommodationRecord | null): RateRow[] {
   if (!initial) return [];
   return initial.rates.map((r) => ({
@@ -71,9 +89,8 @@ function toRateRows(initial: AccommodationRecord | null): RateRow[] {
     season: r.season,
     mealPlan: r.mealPlan,
     adultSharing: r.adultSharingCents != null ? String(centsToAmount(r.adultSharingCents)) : "",
-    child5to12: r.child5to12Cents != null ? String(centsToAmount(r.child5to12Cents)) : "",
-    childUnder5: r.childUnder5Cents != null ? String(centsToAmount(r.childUnder5Cents)) : "",
     single: r.singleCents != null ? String(centsToAmount(r.singleCents)) : "",
+    childPrices: Object.fromEntries(r.childRates.map((cr) => [cr.bracketId, String(centsToAmount(cr.priceCents))])),
     standardRoom: r.standardRoomCents != null ? String(centsToAmount(r.standardRoomCents)) : "",
     singleRoom: r.singleRoomCents != null ? String(centsToAmount(r.singleRoomCents)) : "",
   }));
@@ -95,6 +112,7 @@ export function AccommodationForm({
   const [currency, setCurrency] = useState<Currency>(initial?.currency ?? "USD");
   const [pricingBasis, setPricingBasis] = useState<PricingBasis>(initial?.pricingBasis ?? "PER_PERSON");
   const [roomTypes, setRoomTypes] = useState<RoomTypeRow[]>(() => toRoomTypeRows(initial));
+  const [brackets, setBrackets] = useState<BracketRow[]>(() => toBracketRows(initial));
   const [rates, setRates] = useState<RateRow[]>(() => toRateRows(initial));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -110,6 +128,22 @@ export function AccommodationForm({
     setRoomTypes((rows) => rows.map((r) => (r.key === key ? { ...r, name } : r)));
   }
 
+  function addBracket() {
+    setBrackets((rows) => [...rows, { key: tempKey(), minAge: "", maxAge: "", label: "" }]);
+  }
+  function updateBracket(key: string, patch: Partial<BracketRow>) {
+    setBrackets((rows) => rows.map((b) => (b.key === key ? { ...b, ...patch } : b)));
+  }
+  function removeBracket(key: string) {
+    setBrackets((rows) => rows.filter((b) => b.key !== key));
+    setRates((rows) =>
+      rows.map((r) => ({
+        ...r,
+        childPrices: Object.fromEntries(Object.entries(r.childPrices).filter(([bracketKey]) => bracketKey !== key)),
+      }))
+    );
+  }
+
   function addRateRow() {
     setRates((rows) => [
       ...rows,
@@ -119,9 +153,8 @@ export function AccommodationForm({
         season: "LOW",
         mealPlan: "BB",
         adultSharing: "",
-        child5to12: "",
-        childUnder5: "",
         single: "",
+        childPrices: {},
         standardRoom: "",
         singleRoom: "",
       },
@@ -129,6 +162,9 @@ export function AccommodationForm({
   }
   function updateRateRow(key: string, patch: Partial<RateRow>) {
     setRates((rows) => rows.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+  function updateRateChildPrice(rowKey: string, bracketKey: string, price: string) {
+    setRates((rows) => rows.map((r) => (r.key === rowKey ? { ...r, childPrices: { ...r.childPrices, [bracketKey]: price } } : r)));
   }
   function removeRateRow(key: string) {
     setRates((rows) => rows.filter((r) => r.key !== key));
@@ -143,6 +179,20 @@ export function AccommodationForm({
       return;
     }
 
+    const parsedBrackets = brackets.map((b) => ({
+      id: b.key,
+      minAge: Number(b.minAge),
+      maxAge: Number(b.maxAge),
+      label: b.label,
+    }));
+    if (pricingBasis === "PER_PERSON") {
+      const bracketError = validateBracketSet(parsedBrackets);
+      if (bracketError) {
+        setError(bracketError);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const payload = {
@@ -152,14 +202,19 @@ export function AccommodationForm({
         currency,
         pricingBasis,
         roomTypes: roomTypes.map((rt) => ({ id: rt.key, name: rt.name.trim() })),
+        childAgeBrackets: pricingBasis === "PER_PERSON" ? parsedBrackets : [],
         rates: rates.map((r) => ({
           roomTypeId: r.roomTypeKey,
           season: r.season,
           mealPlan: r.mealPlan,
           adultSharing: pricingBasis === "PER_PERSON" && r.adultSharing !== "" ? Number(r.adultSharing) : undefined,
-          child5to12: pricingBasis === "PER_PERSON" && r.child5to12 !== "" ? Number(r.child5to12) : undefined,
-          childUnder5: pricingBasis === "PER_PERSON" && r.childUnder5 !== "" ? Number(r.childUnder5) : undefined,
           single: pricingBasis === "PER_PERSON" && r.single !== "" ? Number(r.single) : undefined,
+          childPrices:
+            pricingBasis === "PER_PERSON"
+              ? Object.entries(r.childPrices)
+                  .filter(([, v]) => v !== "")
+                  .map(([bracketId, v]) => ({ bracketId, price: Number(v) }))
+              : undefined,
           standardRoom: pricingBasis === "PER_ROOM" && r.standardRoom !== "" ? Number(r.standardRoom) : undefined,
           singleRoom: pricingBasis === "PER_ROOM" && r.singleRoom !== "" ? Number(r.singleRoom) : undefined,
         })),
@@ -178,7 +233,7 @@ export function AccommodationForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit accommodation" : "Add accommodation"} onClose={onClose} width="max-w-4xl">
+    <Modal open title={initial ? "Edit accommodation" : "Add accommodation"} onClose={onClose} width="max-w-5xl">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -232,6 +287,58 @@ export function AccommodationForm({
           </div>
         </div>
 
+        {pricingBasis === "PER_PERSON" && (
+          <div>
+            <div className="mb-2 flex items-center justify-between">
+              <Label>Child age brackets</Label>
+              <Button type="button" size="sm" variant="secondary" onClick={addBracket}>
+                + Add age bracket
+              </Button>
+            </div>
+            {brackets.length === 0 ? (
+              <p className="text-[13px] text-muted">
+                No child age brackets yet — this accommodation will only price adults until you add one.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {brackets.map((b) => (
+                  <div key={b.key} className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      max={15}
+                      placeholder="Min age"
+                      value={b.minAge}
+                      onChange={(e) => updateBracket(b.key, { minAge: e.target.value })}
+                      className="w-24"
+                    />
+                    <span className="text-muted">–</span>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={15}
+                      placeholder="Max age"
+                      value={b.maxAge}
+                      onChange={(e) => updateBracket(b.key, { maxAge: e.target.value })}
+                      className="w-24"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <Input
+                        placeholder="Display label (optional)"
+                        value={b.label}
+                        onChange={(e) => updateBracket(b.key, { label: e.target.value })}
+                      />
+                    </div>
+                    <Button type="button" size="sm" variant="ghost" onClick={() => removeBracket(b.key)}>
+                      Remove
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         <div>
           <div className="mb-2 flex items-center justify-between">
             <Label>Rates ({currency})</Label>
@@ -254,8 +361,11 @@ export function AccommodationForm({
                     {pricingBasis === "PER_PERSON" ? (
                       <>
                         <th className="px-3 py-2">Adult Sharing</th>
-                        <th className="px-3 py-2">Child 5–12</th>
-                        <th className="px-3 py-2">Child &lt;5</th>
+                        {brackets.map((b) => (
+                          <th key={b.key} className="px-3 py-2">
+                            Child {b.label || `${b.minAge || "?"}–${b.maxAge || "?"}`}
+                          </th>
+                        ))}
                         <th className="px-3 py-2">Single</th>
                       </>
                     ) : (
@@ -320,24 +430,17 @@ export function AccommodationForm({
                               className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                             />
                           </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={row.child5to12}
-                              onChange={(e) => updateRateRow(row.key, { child5to12: e.target.value })}
-                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={row.childUnder5}
-                              onChange={(e) => updateRateRow(row.key, { childUnder5: e.target.value })}
-                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                            />
-                          </td>
+                          {brackets.map((b) => (
+                            <td key={b.key} className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.childPrices[b.key] ?? ""}
+                                onChange={(e) => updateRateChildPrice(row.key, b.key, e.target.value)}
+                                className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </td>
+                          ))}
                           <td className="px-3 py-2">
                             <Input
                               type="number"

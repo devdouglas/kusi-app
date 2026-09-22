@@ -26,10 +26,10 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model Settings {
-  id              String   @id @default("singleton")
+  id         String   @id @default("singleton")
   // KES per 1 USD, scaled by 1,000,000
-  rateMicros      Int
-  updatedAt       DateTime @updatedAt
+  rateMicros Int
+  updatedAt  DateTime @updatedAt
 }
 
 // ---------------------------------------------------------------------------
@@ -79,6 +79,7 @@ enum LineItemCategory {
   TRAIN
   TAXI_TRANSFER
   ACTIVITY
+  PARK_ENTRANCE_FEE
   DOMESTIC_FLIGHT
   VILLA
   MISC
@@ -89,28 +90,46 @@ enum LineItemCategory {
 // ---------------------------------------------------------------------------
 
 model Accommodation {
-  id           String   @id @default(cuid())
+  id           String       @id @default(cuid())
   name         String
   location     String
   notes        String?
   currency     Currency
   pricingBasis PricingBasis
-  archived     Boolean  @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  archived     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  roomTypes AccommodationRoomType[]
-  rates     AccommodationRate[]
+  roomTypes        AccommodationRoomType[]
+  rates            AccommodationRate[]
+  childAgeBrackets AccommodationChildAgeBracket[]
 
   @@index([name])
   @@index([archived])
 }
 
+// Every accommodation defines its own child age brackets (spec: "the whole
+// purpose of this change is that each supplier/entity may define them
+// differently" — brackets are never shared globally or across suppliers).
+model AccommodationChildAgeBracket {
+  id              String  @id @default(cuid())
+  accommodationId String
+  minAge          Int
+  maxAge          Int
+  label           String?
+  sortOrder       Int     @default(0)
+
+  accommodation Accommodation            @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
+  childRates    AccommodationChildRate[]
+
+  @@index([accommodationId])
+}
+
 model AccommodationRoomType {
-  id              String   @id @default(cuid())
+  id              String @id @default(cuid())
   accommodationId String
   name            String
-  sortOrder       Int      @default(0)
+  sortOrder       Int    @default(0)
 
   accommodation Accommodation       @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
   rates         AccommodationRate[]
@@ -130,8 +149,6 @@ model AccommodationRate {
 
   // PER_PERSON fields (cents)
   adultSharingCents Int?
-  child5to12Cents   Int?
-  childUnder5Cents  Int?
   singleCents       Int?
 
   // PER_ROOM fields (cents)
@@ -141,11 +158,29 @@ model AccommodationRate {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  accommodation Accommodation         @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
-  roomType      AccommodationRoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  accommodation Accommodation            @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
+  roomType      AccommodationRoomType    @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  childRates    AccommodationChildRate[]
 
   @@unique([roomTypeId, season, mealPlan])
   @@index([accommodationId])
+}
+
+// One price per (rate row, accommodation-specific child age bracket).
+// Replaces the old fixed child5to12Cents/childUnder5Cents columns so the
+// number and definition of child brackets can vary freely per accommodation.
+model AccommodationChildRate {
+  id                  String @id @default(cuid())
+  accommodationRateId String
+  bracketId           String
+  priceCents          Int
+
+  accommodationRate AccommodationRate            @relation(fields: [accommodationRateId], references: [id], onDelete: Cascade)
+  bracket           AccommodationChildAgeBracket @relation(fields: [bracketId], references: [id], onDelete: Cascade)
+
+  @@unique([accommodationRateId, bracketId])
+  @@index([accommodationRateId])
+  @@index([bracketId])
 }
 
 // ---------------------------------------------------------------------------
@@ -153,14 +188,14 @@ model AccommodationRate {
 // ---------------------------------------------------------------------------
 
 model TransportRate {
-  id              String      @id @default(cuid())
-  vehicleType     VehicleType
-  priceCents      Int
-  currency        Currency
-  notes           String?
-  archived        Boolean     @default(false)
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id          String      @id @default(cuid())
+  vehicleType VehicleType
+  priceCents  Int
+  currency    Currency
+  notes       String?
+  archived    Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   @@index([vehicleType])
   @@index([archived])
@@ -171,15 +206,15 @@ model TransportRate {
 // ---------------------------------------------------------------------------
 
 model TrainJourney {
-  id                String   @id @default(cuid())
-  route             String
-  firstClassCents   Int
-  secondClassCents  Int
-  currency          Currency
-  notes             String?
-  archived          Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(cuid())
+  route            String
+  firstClassCents  Int
+  secondClassCents Int
+  currency         Currency
+  notes            String?
+  archived         Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@index([route])
   @@index([archived])
@@ -190,14 +225,14 @@ model TrainJourney {
 // ---------------------------------------------------------------------------
 
 model TransferRate {
-  id            String   @id @default(cuid())
-  route         String
-  priceCents    Int
-  currency      Currency
-  notes         String?
-  archived      Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id         String   @id @default(cuid())
+  route      String
+  priceCents Int
+  currency   Currency
+  notes      String?
+  archived   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([route])
   @@index([archived])
@@ -208,18 +243,55 @@ model TransferRate {
 // ---------------------------------------------------------------------------
 
 model ActivityRate {
+  id         String   @id @default(cuid())
+  name       String
+  location   String
+  priceCents Int
+  currency   Currency
+  notes      String?
+  archived   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([name])
+  @@index([archived])
+}
+
+// ---------------------------------------------------------------------------
+// Rate Library: Park Entrance Fees
+// ---------------------------------------------------------------------------
+
+model Park {
   id            String   @id @default(cuid())
   name          String
-  location      String
-  priceCents    Int
   currency      Currency
+  adultFeeCents Int
   notes         String?
   archived      Boolean  @default(false)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
+  childBrackets ParkChildAgeBracket[]
+
   @@index([name])
   @@index([archived])
+}
+
+// Unlike accommodation (where a price varies by room/season/meal plan and so
+// is normalized into a separate join row), a park has exactly one rate, so
+// the bracket and its price live together on one row.
+model ParkChildAgeBracket {
+  id         String  @id @default(cuid())
+  parkId     String
+  minAge     Int
+  maxAge     Int
+  priceCents Int
+  label      String?
+  sortOrder  Int     @default(0)
+
+  park Park @relation(fields: [parkId], references: [id], onDelete: Cascade)
+
+  @@index([parkId])
 }
 
 // ---------------------------------------------------------------------------
@@ -227,14 +299,14 @@ model ActivityRate {
 // ---------------------------------------------------------------------------
 
 model FlightRate {
-  id            String   @id @default(cuid())
-  route         String
-  priceCents    Int
-  currency      Currency
-  notes         String?
-  archived      Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id         String   @id @default(cuid())
+  route      String
+  priceCents Int
+  currency   Currency
+  notes      String?
+  archived   Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([route])
   @@index([archived])
@@ -245,15 +317,13 @@ model FlightRate {
 // ---------------------------------------------------------------------------
 
 model Quote {
-  id          String      @id @default(cuid())
-  clientName  String
-  tripTitle   String
-  startDate   DateTime
-  endDate     DateTime
+  id         String   @id @default(cuid())
+  clientName String
+  tripTitle  String
+  startDate  DateTime
+  endDate    DateTime
 
-  adults        Int @default(1)
-  children5to12 Int @default(0)
-  childrenUnder5 Int @default(0)
+  adults Int @default(1)
 
   status QuoteStatus @default(DRAFT)
 
@@ -264,7 +334,7 @@ model Quote {
   // Future selling-price architecture (Version 1 leaves these null and the
   // UI never surfaces them). Kept separate from cost fields on purpose so
   // margin logic can be layered on later without touching the cost engine.
-  marginPercent  Int? // basis points (1/100 of a percent), e.g. 1500 = 15.00%
+  marginPercent     Int? // basis points (1/100 of a percent), e.g. 1500 = 15.00%
   sellingPriceCents Int?
 
   notes String?
@@ -272,10 +342,29 @@ model Quote {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  days QuoteDay[]
+  days     QuoteDay[]
+  children QuoteChild[]
 
   @@index([status])
   @@index([clientName])
+}
+
+// One row per child travelling on the quote, storing their exact age (never
+// only an aggregated bracket) so each supplier/product can match it against
+// its own age brackets independently. `age` is null only for a row migrated
+// from the old aggregate categories, where the exact age cannot be known;
+// `legacyLabel` preserves what that migrated row used to represent (e.g.
+// "5-12") so historical quotes stay readable without inventing precision
+// that was never captured.
+model QuoteChild {
+  id          String  @id @default(cuid())
+  quoteId     String
+  age         Int?
+  legacyLabel String?
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
 }
 
 model QuoteDay {
@@ -284,7 +373,7 @@ model QuoteDay {
   date      DateTime
   dayNumber Int
 
-  quote     Quote          @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  quote     Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
   lineItems QuoteLineItem[]
 
   @@unique([quoteId, dayNumber])
@@ -296,10 +385,10 @@ model QuoteDay {
 // types that are parsed out of it). Common cost fields are kept as real
 // columns so totals can be computed/queried without parsing JSON.
 model QuoteLineItem {
-  id       String           @id @default(cuid())
-  dayId    String
-  category LineItemCategory
-  sortOrder Int             @default(0)
+  id        String           @id @default(cuid())
+  dayId     String
+  category  LineItemCategory
+  sortOrder Int              @default(0)
 
   // If this line item was created from a Rate Library entry, its source id
   // (kept for reference only — never re-read for pricing after creation).
@@ -331,9 +420,9 @@ model QuoteLineItem {
   // Manual override support (spec section 38): what the Rate Library would
   // have produced, preserved for reference, vs. originalTotalCents which is
   // the (possibly overridden) figure actually used for this quote.
-  manualOverride     Boolean   @default(false)
-  libraryTotalCents  Int?
-  libraryCurrency    Currency?
+  manualOverride    Boolean   @default(false)
+  libraryTotalCents Int?
+  libraryCurrency   Currency?
 
   notes String?
 

@@ -1,5 +1,5 @@
 import { type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes, forwardRef, type ReactNode } from "react";
-import clsx from "clsx";
+import { cn } from "@/lib/cn";
 
 export function Label({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) {
   return (
@@ -21,12 +21,12 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   { className, ...props },
   ref
 ) {
-  return <input ref={ref} className={clsx(baseInputClasses, className)} {...props} />;
+  return <input ref={ref} className={cn(baseInputClasses, className)} {...props} />;
 });
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, ...props }, ref) {
-    return <textarea ref={ref} className={clsx(baseInputClasses, "min-h-20 resize-y", className)} {...props} />;
+    return <textarea ref={ref} className={cn(baseInputClasses, "min-h-20 resize-y", className)} {...props} />;
   }
 );
 
@@ -35,12 +35,12 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
   ref
 ) {
   return (
-    <select ref={ref} className={clsx(baseInputClasses, "pr-8", className)} {...props}>
+    <select ref={ref} className={cn(baseInputClasses, "pr-8", className)} {...props}>
       {children}
     </select>
   );
 });
 
 export function FormRow({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={clsx("grid gap-4 sm:grid-cols-2", className)}>{children}</div>;
+  return <div className={cn("grid gap-4 sm:grid-cols-2", className)}>{children}</div>;
 }

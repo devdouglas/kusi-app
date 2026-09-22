@@ -23,32 +23,43 @@ async function main() {
         currency: "USD",
         pricingBasis: "PER_PERSON",
         roomTypes: { create: [{ name: "Deluxe Tent", sortOrder: 0 }] },
+        childAgeBrackets: {
+          create: [
+            { minAge: 0, maxAge: 4, label: "Under 5", sortOrder: 0 },
+            { minAge: 5, maxAge: 12, label: "5-12", sortOrder: 1 },
+          ],
+        },
       },
-      include: { roomTypes: true },
+      include: { roomTypes: true, childAgeBrackets: true },
     });
     const deluxeTent = samburu.roomTypes[0];
-    await prisma.accommodationRate.createMany({
+    const [under5, fiveTo12] = samburu.childAgeBrackets;
+    const lowRate = await prisma.accommodationRate.create({
+      data: {
+        accommodationId: samburu.id,
+        roomTypeId: deluxeTent.id,
+        season: "LOW",
+        mealPlan: "FB",
+        adultSharingCents: amountToCents(150),
+        singleCents: amountToCents(190),
+      },
+    });
+    const highRate = await prisma.accommodationRate.create({
+      data: {
+        accommodationId: samburu.id,
+        roomTypeId: deluxeTent.id,
+        season: "HIGH",
+        mealPlan: "FB",
+        adultSharingCents: amountToCents(220),
+        singleCents: amountToCents(280),
+      },
+    });
+    await prisma.accommodationChildRate.createMany({
       data: [
-        {
-          accommodationId: samburu.id,
-          roomTypeId: deluxeTent.id,
-          season: "LOW",
-          mealPlan: "FB",
-          adultSharingCents: amountToCents(150),
-          child5to12Cents: amountToCents(90),
-          childUnder5Cents: 0,
-          singleCents: amountToCents(190),
-        },
-        {
-          accommodationId: samburu.id,
-          roomTypeId: deluxeTent.id,
-          season: "HIGH",
-          mealPlan: "FB",
-          adultSharingCents: amountToCents(220),
-          child5to12Cents: amountToCents(130),
-          childUnder5Cents: 0,
-          singleCents: amountToCents(280),
-        },
+        { accommodationRateId: lowRate.id, bracketId: under5.id, priceCents: 0 },
+        { accommodationRateId: lowRate.id, bracketId: fiveTo12.id, priceCents: amountToCents(90) },
+        { accommodationRateId: highRate.id, bracketId: under5.id, priceCents: 0 },
+        { accommodationRateId: highRate.id, bracketId: fiveTo12.id, priceCents: amountToCents(130) },
       ],
     });
 
@@ -100,6 +111,20 @@ async function main() {
 
     await prisma.flightRate.create({
       data: { route: "Nairobi → Samburu", priceCents: amountToCents(220), currency: "USD" },
+    });
+
+    await prisma.park.create({
+      data: {
+        name: "Samburu National Reserve",
+        currency: "USD",
+        adultFeeCents: amountToCents(80),
+        childBrackets: {
+          create: [
+            { minAge: 0, maxAge: 4, priceCents: 0, label: "Under 5", sortOrder: 0 },
+            { minAge: 5, maxAge: 15, priceCents: amountToCents(40), label: "5-15", sortOrder: 1 },
+          ],
+        },
+      },
     });
 
     console.log("Seeded demo Rate Library data.");

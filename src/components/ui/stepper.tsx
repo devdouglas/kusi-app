@@ -1,6 +1,6 @@
 "use client";
 
-import clsx from "clsx";
+import { cn } from "@/lib/cn";
 
 /**
  * Quantity control: "- N +" with the number also directly typeable, per
@@ -30,7 +30,7 @@ export function Stepper({
 
   return (
     <div
-      className={clsx(
+      className={cn(
         "inline-flex items-center rounded-xl border border-border bg-white",
         disabled && "opacity-60",
         className

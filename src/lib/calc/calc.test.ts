@@ -136,9 +136,9 @@ describe("quote totals", () => {
     expect(totals.perPersonUsdCents).toBe(amountToCents(2112.5));
   });
 
-  it("computes total pax from passenger composition", () => {
-    expect(computeTotalPax(2, 1, 0)).toBe(3);
-    expect(computeTotalPax(4, 0, 0)).toBe(4);
+  it("computes total pax from adults plus number of children", () => {
+    expect(computeTotalPax(2, 1)).toBe(3);
+    expect(computeTotalPax(4, 0)).toBe(4);
   });
 });
 

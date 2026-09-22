@@ -9,6 +9,7 @@ const ITEMS = [
   { href: "/rate-library/train", label: "Train" },
   { href: "/rate-library/transfers", label: "Taxi Transfer" },
   { href: "/rate-library/activities", label: "Activities" },
+  { href: "/rate-library/parks", label: "Park Entrance Fees" },
   { href: "/rate-library/flights", label: "Domestic Flights" },
 ];
 

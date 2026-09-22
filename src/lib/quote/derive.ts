@@ -1,10 +1,13 @@
-import type { Quote, QuoteDay, QuoteLineItem } from "@prisma/client";
+import type { Quote, QuoteChild, QuoteDay, QuoteLineItem } from "@prisma/client";
 import { countDays, countNights, formatTravelPeriod } from "@/lib/calc/trip-dates";
 import { countPrivateVehicleDays } from "@/lib/calc/vehicle-days";
 import { computeQuoteTotals, computeTotalPax } from "@/lib/calc/quote-totals";
 import { parseLineItemData, type LineItemData } from "@/types/line-items";
 
-export type QuoteWithDays = Quote & { days: (QuoteDay & { lineItems: QuoteLineItem[] })[] };
+export type QuoteWithDays = Quote & {
+  days: (QuoteDay & { lineItems: QuoteLineItem[] })[];
+  children: QuoteChild[];
+};
 
 export interface DerivedLineItem extends QuoteLineItem {
   parsedData: LineItemData;
@@ -20,6 +23,10 @@ export interface DerivedQuote {
   quote: Quote;
   days: DerivedDay[];
   totalPax: number;
+  /** Exact ages of every child with a known age (legacy rows with no exact age are excluded). */
+  childAges: number[];
+  /** True if any legacy (pre-exact-age) children are on this quote. */
+  hasLegacyChildren: boolean;
   numberOfDays: number;
   numberOfNights: number;
   travelPeriod: string;
@@ -46,7 +53,9 @@ export function deriveQuote(quote: QuoteWithDays): DerivedQuote {
       return { ...day, lineItems, dayTotalUsdCents, hasPrivateTransport };
     });
 
-  const totalPax = computeTotalPax(quote.adults, quote.children5to12, quote.childrenUnder5);
+  const totalPax = computeTotalPax(quote.adults, quote.children.length);
+  const childAges = quote.children.map((c) => c.age).filter((age): age is number => age != null);
+  const hasLegacyChildren = quote.children.some((c) => c.age == null);
   const numberOfDays = countDays(quote.startDate, quote.endDate);
   const numberOfNights = countNights(quote.startDate, quote.endDate);
   const travelPeriod = formatTravelPeriod(quote.startDate, quote.endDate);
@@ -60,6 +69,8 @@ export function deriveQuote(quote: QuoteWithDays): DerivedQuote {
     quote,
     days,
     totalPax,
+    childAges,
+    hasLegacyChildren,
     numberOfDays,
     numberOfNights,
     travelPeriod,

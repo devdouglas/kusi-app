@@ -31,6 +31,7 @@ describe("Rate Library snapshot (spec section 63)", () => {
       currency: "USD",
       pricingBasis: "PER_PERSON",
       roomTypes: [{ name: "Standard Room" }],
+      childAgeBrackets: [],
       rates: [
         {
           roomTypeId: "Standard Room",
@@ -49,8 +50,7 @@ describe("Rate Library snapshot (spec section 63)", () => {
       startDate: new Date("2026-09-10"),
       endDate: new Date("2026-09-12"),
       adults: 2,
-      children5to12: 0,
-      childrenUnder5: 0,
+      children: [],
     });
     createdQuoteIds.push(quote.id);
 
@@ -78,6 +78,7 @@ describe("Rate Library snapshot (spec section 63)", () => {
       currency: "USD",
       pricingBasis: "PER_PERSON",
       roomTypes: [{ id: accommodation.roomTypes[0].id, name: "Standard Room" }],
+      childAgeBrackets: [],
       rates: [
         {
           roomTypeId: accommodation.roomTypes[0].id,
@@ -105,6 +106,7 @@ describe("Exchange rate snapshot (spec section 63)", () => {
       currency: "KES",
       pricingBasis: "PER_PERSON",
       roomTypes: [{ name: "Standard Room" }],
+      childAgeBrackets: [],
       rates: [
         { roomTypeId: "Standard Room", season: "LOW", mealPlan: "FB", adultSharing: 13000 },
       ],
@@ -118,8 +120,7 @@ describe("Exchange rate snapshot (spec section 63)", () => {
       startDate: new Date("2026-09-10"),
       endDate: new Date("2026-09-11"),
       adults: 1,
-      children5to12: 0,
-      childrenUnder5: 0,
+      children: [],
     });
     createdQuoteIds.push(quote.id);
     expect(quote.rateMicros).toBe(130_000_000);
@@ -153,8 +154,7 @@ describe("Exchange rate snapshot (spec section 63)", () => {
       startDate: new Date("2026-09-10"),
       endDate: new Date("2026-09-11"),
       adults: 1,
-      children5to12: 0,
-      childrenUnder5: 0,
+      children: [],
     });
     createdQuoteIds.push(quoteB.id);
     expect(quoteB.rateMicros).toBe(135_000_000);

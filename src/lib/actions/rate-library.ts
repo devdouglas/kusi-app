@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { amountToCents } from "@/lib/money";
 import { revalidatePath } from "next/cache";
+import { validateBracketSet } from "@/lib/calc/child-brackets";
 import {
   accommodationInput,
   transportRateInput,
@@ -10,12 +11,14 @@ import {
   transferRateInput,
   activityRateInput,
   flightRateInput,
+  parkInput,
   type AccommodationInput,
   type TransportRateInput,
   type TrainJourneyInput,
   type TransferRateInput,
   type ActivityRateInput,
   type FlightRateInput,
+  type ParkInput,
 } from "@/lib/validation/rate-library";
 
 function revalidateLibrary() {
@@ -49,60 +52,115 @@ export async function listAccommodations(opts: { search?: string; includeArchive
     },
     orderBy: { name: "asc" },
     take: 50,
-    include: { roomTypes: { orderBy: { sortOrder: "asc" } }, rates: true },
+    include: {
+      roomTypes: { orderBy: { sortOrder: "asc" } },
+      rates: { include: { childRates: true } },
+      childAgeBrackets: { orderBy: { sortOrder: "asc" } },
+    },
   });
 }
 
 export async function getAccommodation(id: string) {
   return prisma.accommodation.findUnique({
     where: { id },
-    include: { roomTypes: { orderBy: { sortOrder: "asc" } }, rates: true },
+    include: {
+      roomTypes: { orderBy: { sortOrder: "asc" } },
+      rates: { include: { childRates: true } },
+      childAgeBrackets: { orderBy: { sortOrder: "asc" } },
+    },
   });
+}
+
+/** Reconciles the submitted child age brackets against what's already stored: update existing, create new, remove missing. Validates the whole set first (range + no overlaps) so a bad edit never reaches the database. */
+async function reconcileChildAgeBrackets(accommodationId: string, input: AccommodationInput) {
+  const validationError = validateBracketSet(input.childAgeBrackets);
+  if (validationError) throw new Error(validationError);
+
+  const existing = await prisma.accommodationChildAgeBracket.findMany({ where: { accommodationId } });
+  const existingIds = new Set(existing.map((b) => b.id));
+  const submittedIds = new Set(input.childAgeBrackets.filter((b) => b.id).map((b) => b.id as string));
+
+  const toDelete = existing.filter((b) => !submittedIds.has(b.id));
+  if (toDelete.length > 0) {
+    await prisma.accommodationChildAgeBracket.deleteMany({ where: { id: { in: toDelete.map((b) => b.id) } } });
+  }
+
+  const bracketIdByLocalId = new Map<string, string>();
+  for (let i = 0; i < input.childAgeBrackets.length; i++) {
+    const b = input.childAgeBrackets[i];
+    if (b.id && existingIds.has(b.id)) {
+      await prisma.accommodationChildAgeBracket.update({
+        where: { id: b.id },
+        data: { minAge: b.minAge, maxAge: b.maxAge, label: b.label || null, sortOrder: i },
+      });
+      bracketIdByLocalId.set(b.id, b.id);
+    } else {
+      const created = await prisma.accommodationChildAgeBracket.create({
+        data: { accommodationId, minAge: b.minAge, maxAge: b.maxAge, label: b.label || null, sortOrder: i },
+      });
+      bracketIdByLocalId.set(b.id ?? `${b.minAge}-${b.maxAge}`, created.id);
+    }
+  }
+  return bracketIdByLocalId;
 }
 
 async function writeAccommodationRates(
   accommodationId: string,
   input: AccommodationInput,
-  roomTypeIdByLocalId: Map<string, string>
+  roomTypeIdByLocalId: Map<string, string>,
+  bracketIdByLocalId: Map<string, string>
 ) {
   // Replace all rates for this accommodation with the submitted set — the
   // rate grid is edited as a whole, so a full replace is simpler and safer
   // than diffing individual cells.
   await prisma.accommodationRate.deleteMany({ where: { accommodationId } });
-  const rows = input.rates
-    .map((r) => {
-      const roomTypeId = roomTypeIdByLocalId.get(r.roomTypeId) ?? r.roomTypeId;
-      if (input.pricingBasis === "PER_PERSON") {
-        if (r.adultSharing == null) return null;
-        return {
+
+  for (const r of input.rates) {
+    const roomTypeId = roomTypeIdByLocalId.get(r.roomTypeId) ?? r.roomTypeId;
+
+    if (input.pricingBasis === "PER_PERSON") {
+      if (r.adultSharing == null) continue;
+      const rate = await prisma.accommodationRate.create({
+        data: {
           accommodationId,
           roomTypeId,
           season: r.season,
           mealPlan: r.mealPlan,
           adultSharingCents: amountToCents(r.adultSharing),
-          child5to12Cents: r.child5to12 != null ? amountToCents(r.child5to12) : null,
-          childUnder5Cents: r.childUnder5 != null ? amountToCents(r.childUnder5) : null,
           singleCents: r.single != null ? amountToCents(r.single) : null,
-        };
+        },
+      });
+      const childPrices = (r.childPrices ?? []).filter((cp) => cp.price != null);
+      if (childPrices.length > 0) {
+        await prisma.accommodationChildRate.createMany({
+          data: childPrices.map((cp) => ({
+            accommodationRateId: rate.id,
+            bracketId: bracketIdByLocalId.get(cp.bracketId) ?? cp.bracketId,
+            priceCents: amountToCents(cp.price),
+          })),
+        });
       }
-      if (r.standardRoom == null) return null;
-      return {
-        accommodationId,
-        roomTypeId,
-        season: r.season,
-        mealPlan: r.mealPlan,
-        standardRoomCents: amountToCents(r.standardRoom),
-        singleRoomCents: r.singleRoom != null ? amountToCents(r.singleRoom) : null,
-      };
-    })
-    .filter((r): r is NonNullable<typeof r> => r !== null);
-  if (rows.length > 0) {
-    await prisma.accommodationRate.createMany({ data: rows });
+    } else {
+      if (r.standardRoom == null) continue;
+      await prisma.accommodationRate.create({
+        data: {
+          accommodationId,
+          roomTypeId,
+          season: r.season,
+          mealPlan: r.mealPlan,
+          standardRoomCents: amountToCents(r.standardRoom),
+          singleRoomCents: r.singleRoom != null ? amountToCents(r.singleRoom) : null,
+        },
+      });
+    }
   }
 }
 
 export async function createAccommodation(raw: AccommodationInput) {
   const input = accommodationInput.parse(raw);
+  const validationError = validateBracketSet(input.childAgeBrackets);
+  if (validationError) throw new Error(validationError);
+
   const accommodation = await prisma.accommodation.create({
     data: {
       name: input.name,
@@ -125,7 +183,8 @@ export async function createAccommodation(raw: AccommodationInput) {
     // caller already generated one client-side for row linking
   });
 
-  await writeAccommodationRates(accommodation.id, input, roomTypeIdByLocalId);
+  const bracketIdByLocalId = await reconcileChildAgeBrackets(accommodation.id, input);
+  await writeAccommodationRates(accommodation.id, input, roomTypeIdByLocalId, bracketIdByLocalId);
   revalidateLibrary();
   return getAccommodation(accommodation.id);
 }
@@ -173,7 +232,8 @@ export async function updateAccommodation(id: string, raw: AccommodationInput) {
     }
   }
 
-  await writeAccommodationRates(id, input, roomTypeIdByLocalId);
+  const bracketIdByLocalId = await reconcileChildAgeBrackets(id, input);
+  await writeAccommodationRates(id, input, roomTypeIdByLocalId, bracketIdByLocalId);
   revalidateLibrary();
   return getAccommodation(id);
 }
@@ -199,21 +259,42 @@ export async function duplicateAccommodation(id: string) {
   const roomTypeMap = new Map<string, string>();
   source.roomTypes.forEach((rt, i) => roomTypeMap.set(rt.id, copy.roomTypes[i].id));
 
-  if (source.rates.length > 0) {
-    await prisma.accommodationRate.createMany({
-      data: source.rates.map((r) => ({
+  const bracketMap = new Map<string, string>();
+  for (const bracket of source.childAgeBrackets) {
+    const created = await prisma.accommodationChildAgeBracket.create({
+      data: {
+        accommodationId: copy.id,
+        minAge: bracket.minAge,
+        maxAge: bracket.maxAge,
+        label: bracket.label,
+        sortOrder: bracket.sortOrder,
+      },
+    });
+    bracketMap.set(bracket.id, created.id);
+  }
+
+  for (const r of source.rates) {
+    const rate = await prisma.accommodationRate.create({
+      data: {
         accommodationId: copy.id,
         roomTypeId: roomTypeMap.get(r.roomTypeId)!,
         season: r.season,
         mealPlan: r.mealPlan,
         adultSharingCents: r.adultSharingCents,
-        child5to12Cents: r.child5to12Cents,
-        childUnder5Cents: r.childUnder5Cents,
         singleCents: r.singleCents,
         standardRoomCents: r.standardRoomCents,
         singleRoomCents: r.singleRoomCents,
-      })),
+      },
     });
+    if (r.childRates.length > 0) {
+      await prisma.accommodationChildRate.createMany({
+        data: r.childRates.map((cr) => ({
+          accommodationRateId: rate.id,
+          bracketId: bracketMap.get(cr.bracketId)!,
+          priceCents: cr.priceCents,
+        })),
+      });
+    }
   }
 
   revalidateLibrary();
@@ -587,5 +668,120 @@ export async function archiveFlightRate(id: string, archived: boolean) {
 export async function deleteFlightRate(id: string) {
   await assertNotUsed(id, "DOMESTIC_FLIGHT", "This route is used in a saved quote — archive it instead of deleting.");
   await prisma.flightRate.delete({ where: { id } });
+  revalidateLibrary();
+}
+
+// ---------------------------------------------------------------------------
+// Park Entrance Fees
+// ---------------------------------------------------------------------------
+
+export async function listParks(opts: { search?: string; includeArchived?: boolean } = {}) {
+  return prisma.park.findMany({
+    where: {
+      archived: opts.includeArchived ? undefined : false,
+      ...(opts.search ? { name: { contains: opts.search } } : {}),
+    },
+    orderBy: { name: "asc" },
+    take: 50,
+    include: { childBrackets: { orderBy: { sortOrder: "asc" } } },
+  });
+}
+
+export async function getPark(id: string) {
+  return prisma.park.findUnique({
+    where: { id },
+    include: { childBrackets: { orderBy: { sortOrder: "asc" } } },
+  });
+}
+
+async function writeParkChildBrackets(parkId: string, input: ParkInput) {
+  const validationError = validateBracketSet(input.childBrackets);
+  if (validationError) throw new Error(validationError);
+
+  // Same "replace the whole set" approach as the accommodation rate grid —
+  // brackets are edited together as one form, so a full replace is simpler
+  // and safer than diffing individual rows.
+  await prisma.parkChildAgeBracket.deleteMany({ where: { parkId } });
+  if (input.childBrackets.length > 0) {
+    await prisma.parkChildAgeBracket.createMany({
+      data: input.childBrackets.map((b, i) => ({
+        parkId,
+        minAge: b.minAge,
+        maxAge: b.maxAge,
+        priceCents: amountToCents(b.price),
+        label: b.label || null,
+        sortOrder: i,
+      })),
+    });
+  }
+}
+
+export async function createPark(raw: ParkInput) {
+  const input = parkInput.parse(raw);
+  const validationError = validateBracketSet(input.childBrackets);
+  if (validationError) throw new Error(validationError);
+
+  const park = await prisma.park.create({
+    data: {
+      name: input.name,
+      currency: input.currency,
+      adultFeeCents: amountToCents(input.adultFee),
+      notes: input.notes || null,
+    },
+  });
+  await writeParkChildBrackets(park.id, input);
+  revalidateLibrary();
+  return getPark(park.id);
+}
+
+export async function updatePark(id: string, raw: ParkInput) {
+  const input = parkInput.parse(raw);
+  await prisma.park.update({
+    where: { id },
+    data: {
+      name: input.name,
+      currency: input.currency,
+      adultFeeCents: amountToCents(input.adultFee),
+      notes: input.notes || null,
+    },
+  });
+  await writeParkChildBrackets(id, input);
+  revalidateLibrary();
+  return getPark(id);
+}
+
+export async function duplicatePark(id: string) {
+  const source = await getPark(id);
+  if (!source) throw new Error("Park not found");
+
+  const copy = await prisma.park.create({
+    data: {
+      name: `${source.name} (Copy)`,
+      currency: source.currency,
+      adultFeeCents: source.adultFeeCents,
+      notes: source.notes,
+      childBrackets: {
+        create: source.childBrackets.map((b) => ({
+          minAge: b.minAge,
+          maxAge: b.maxAge,
+          priceCents: b.priceCents,
+          label: b.label,
+          sortOrder: b.sortOrder,
+        })),
+      },
+    },
+  });
+  revalidateLibrary();
+  return getPark(copy.id);
+}
+
+export async function archivePark(id: string, archived: boolean) {
+  await prisma.park.update({ where: { id }, data: { archived } });
+  revalidateLibrary();
+}
+
+export async function deletePark(id: string) {
+  await assertNotUsed(id, "PARK_ENTRANCE_FEE", "This park is used in a saved quote — archive it instead of deleting.");
+  await prisma.park.delete({ where: { id } });
   revalidateLibrary();
 }

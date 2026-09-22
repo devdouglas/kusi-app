@@ -4,7 +4,14 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { removeLineItem, duplicateLineItem } from "@/lib/actions/quotes";
 import { formatUsd, formatMoney } from "@/lib/money";
-import { CATEGORY_LABELS, MEAL_PLAN_LABELS, SEASON_LABELS, VEHICLE_TYPE_LABELS, type LineItemData } from "@/types/line-items";
+import {
+  CATEGORY_LABELS,
+  MEAL_PLAN_LABELS,
+  SEASON_LABELS,
+  VEHICLE_TYPE_LABELS,
+  isLegacyPerPersonBasis,
+  type LineItemData,
+} from "@/types/line-items";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { OverrideModal } from "./override-modal";
@@ -26,26 +33,44 @@ export interface LineItemRowData {
   data: LineItemData;
 }
 
-function detailLine(data: LineItemData): string | null {
+function bracketLines(brackets: { ages: number[]; label: string }[]): string[] {
+  return brackets.map((b) => {
+    const noun = b.ages.length === 1 ? "child" : "children";
+    const ageWord = b.ages.length === 1 ? "age" : "ages";
+    return `${b.label}: ${b.ages.length} ${noun}, ${ageWord} ${[...b.ages].sort((a, c) => a - c).join(", ")}`;
+  });
+}
+
+function detailLines(data: LineItemData): string[] {
   switch (data.category) {
-    case "ACCOMMODATION":
-      return `${data.roomTypeName} · ${MEAL_PLAN_LABELS[data.mealPlan]} · ${SEASON_LABELS[data.season]}`;
+    case "ACCOMMODATION": {
+      const lines = [`${data.roomTypeName} · ${MEAL_PLAN_LABELS[data.mealPlan]} · ${SEASON_LABELS[data.season]}`];
+      if (!isLegacyPerPersonBasis(data.basis) && data.basis.pricingBasis === "PER_PERSON") {
+        lines.push(...bracketLines(data.basis.childBrackets));
+      }
+      return lines;
+    }
     case "PRIVATE_TRANSPORT":
-      return `${VEHICLE_TYPE_LABELS[data.vehicleType]} × ${data.vehicles}`;
+      return [`${VEHICLE_TYPE_LABELS[data.vehicleType]} × ${data.vehicles}`];
     case "TRAIN":
-      return `${data.trainClass === "FIRST" ? "First Class" : "Second Class"} · ${data.passengers} passenger${data.passengers !== 1 ? "s" : ""}`;
+      return [`${data.trainClass === "FIRST" ? "First Class" : "Second Class"} · ${data.passengers} passenger${data.passengers !== 1 ? "s" : ""}`];
     case "TAXI_TRANSFER":
-      return `${data.vehicles} vehicle${data.vehicles !== 1 ? "s" : ""}`;
+      return [`${data.vehicles} vehicle${data.vehicles !== 1 ? "s" : ""}`];
     case "ACTIVITY":
-      return `${data.participants} participant${data.participants !== 1 ? "s" : ""}`;
+      return [`${data.participants} participant${data.participants !== 1 ? "s" : ""}`];
+    case "PARK_ENTRANCE_FEE": {
+      const lines = data.adults > 0 ? [`${data.adults} adult${data.adults !== 1 ? "s" : ""}`] : [];
+      lines.push(...bracketLines(data.childBrackets));
+      return lines;
+    }
     case "DOMESTIC_FLIGHT":
-      return `${data.passengers} passenger${data.passengers !== 1 ? "s" : ""}`;
+      return [`${data.passengers} passenger${data.passengers !== 1 ? "s" : ""}`];
     case "VILLA":
-      return `${data.nights} night${data.nights !== 1 ? "s" : ""}${data.quantity > 1 ? ` × ${data.quantity}` : ""}`;
+      return [`${data.nights} night${data.nights !== 1 ? "s" : ""}${data.quantity > 1 ? ` × ${data.quantity}` : ""}`];
     case "MISC":
-      return `Qty ${data.quantity}`;
+      return [`Qty ${data.quantity}`];
     default:
-      return null;
+      return [];
   }
 }
 
@@ -55,6 +80,7 @@ const CAN_OVERRIDE: Record<LineItemData["category"], boolean> = {
   TRAIN: false, // train already supports inline price edits
   TAXI_TRANSFER: true,
   ACTIVITY: true,
+  PARK_ENTRANCE_FEE: true,
   DOMESTIC_FLIGHT: true,
   VILLA: false,
   MISC: false,
@@ -70,7 +96,7 @@ export function LineItemRow({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
-  const detail = detailLine(item.data);
+  const details = detailLines(item.data);
   const canOverride = CAN_OVERRIDE[item.category] && item.libraryTotalCents != null;
 
   return (
@@ -81,7 +107,11 @@ export function LineItemRow({
           {item.manualOverride && <Badge tone="amber">Manual rate</Badge>}
         </div>
         <p className="mt-1 text-sm font-medium text-foreground">{item.description}</p>
-        {detail && <p className="text-[12px] text-muted">{detail}</p>}
+        {details.map((line, i) => (
+          <p key={i} className="text-[12px] text-muted">
+            {line}
+          </p>
+        ))}
         {item.originalCurrency !== "USD" && (
           <p className="text-[12px] text-muted">{formatMoney(item.originalTotalCents, item.originalCurrency)}</p>
         )}

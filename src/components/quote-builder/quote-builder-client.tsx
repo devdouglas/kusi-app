@@ -14,6 +14,7 @@ import { DayCard } from "./day-card";
 import { AddItemModal, type EditContext } from "./add-item-modal";
 import { TripHeaderForm } from "./trip-header-form";
 import type { LineItemData } from "@/types/line-items";
+import { formatChildrenSummary } from "@/lib/calc/children";
 
 const STATUS_TONE = { DRAFT: "amber", FINAL: "sage", ARCHIVED: "neutral" } as const;
 
@@ -25,7 +26,8 @@ export function QuoteBuilderClient({
   currentRateMicros: number;
 }) {
   const router = useRouter();
-  const { quote, days, totalPax, numberOfDays, numberOfNights, travelPeriod, privateVehicleDays, totalUsdCents, perPersonUsdCents } = derived;
+  const { quote, days, totalPax, childAges, numberOfDays, numberOfNights, travelPeriod, privateVehicleDays, totalUsdCents, perPersonUsdCents } =
+    derived;
 
   const [addItemDayId, setAddItemDayId] = useState<string | null>(null);
   const [editContext, setEditContext] = useState<{ dayId: string; edit: EditContext } | null>(null);
@@ -35,10 +37,10 @@ export function QuoteBuilderClient({
   const quoteContext = {
     rateMicros: quote.rateMicros,
     adults: quote.adults,
-    children5to12: quote.children5to12,
-    childrenUnder5: quote.childrenUnder5,
+    childAges,
     totalPax,
   };
+  const childrenSummary = formatChildrenSummary(childAges);
 
   const rateOutOfDate = quote.status === "DRAFT" && quote.rateMicros !== currentRateMicros;
 
@@ -93,6 +95,10 @@ export function QuoteBuilderClient({
             <Badge tone={STATUS_TONE[quote.status]}>{quote.status}</Badge>
           </div>
           <p className="mt-1 text-sm text-muted">{quote.clientName}</p>
+          <p className="mt-0.5 text-[13px] text-muted">
+            Passengers: {totalPax} · Adults: {quote.adults}
+            {childrenSummary ? ` · Children: ${childrenSummary}` : ""}
+          </p>
           <button
             type="button"
             onClick={() => setShowHeaderForm(true)}
@@ -214,7 +220,15 @@ export function QuoteBuilderClient({
       )}
 
       {showHeaderForm && (
-        <TripHeaderForm quote={quote} onClose={() => setShowHeaderForm(false)} onSaved={() => { setShowHeaderForm(false); router.refresh(); }} />
+        <TripHeaderForm
+          quote={quote}
+          childAges={childAges}
+          onClose={() => setShowHeaderForm(false)}
+          onSaved={() => {
+            setShowHeaderForm(false);
+            router.refresh();
+          }}
+        />
       )}
     </div>
   );

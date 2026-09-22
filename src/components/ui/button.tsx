@@ -1,5 +1,5 @@
 import { type ButtonHTMLAttributes, forwardRef } from "react";
-import clsx from "clsx";
+import { cn } from "@/lib/cn";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
@@ -24,7 +24,7 @@ export const Button = forwardRef<
   return (
     <button
       ref={ref}
-      className={clsx(
+      className={cn(
         "inline-flex items-center justify-center gap-1.5 font-medium transition-colors disabled:cursor-not-allowed",
         VARIANT_CLASSES[variant],
         SIZE_CLASSES[size],

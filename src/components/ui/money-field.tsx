@@ -24,17 +24,18 @@ export function MoneyField({
   return (
     <div>
       <div className="flex gap-2">
-        <Input
-          type="number"
-          min={0}
-          step="0.01"
-          inputMode="decimal"
-          value={Number.isFinite(amount) ? amount : ""}
-          placeholder={placeholder ?? "0.00"}
-          disabled={disabled}
-          onChange={(e) => onAmountChange(e.target.value === "" ? 0 : Number(e.target.value))}
-          className="flex-1"
-        />
+        <div className="min-w-0 flex-1">
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            inputMode="decimal"
+            value={Number.isFinite(amount) ? amount : ""}
+            placeholder={placeholder ?? "0.00"}
+            disabled={disabled}
+            onChange={(e) => onAmountChange(e.target.value === "" ? 0 : Number(e.target.value))}
+          />
+        </div>
         <div className="inline-flex overflow-hidden rounded-xl border border-border">
           {(["USD", "KES"] as const).map((c) => (
             <button
