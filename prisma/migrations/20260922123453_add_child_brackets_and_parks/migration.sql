@@ -1,5 +1,5 @@
 -- AlterEnum
-ALTER TYPE "LineItemCategory" ADD VALUE 'PARK_ENTRANCE_FEE';
+ALTER TYPE "LineItemCategory" ADD VALUE IF NOT EXISTS 'PARK_ENTRANCE_FEE';
 
 -- CreateTable
 CREATE TABLE "AccommodationChildAgeBracket" (
