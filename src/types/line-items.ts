@@ -1,10 +1,11 @@
 import type { Currency } from "@/lib/money";
 
 export type Season = "LOW" | "SHOULDER" | "HIGH";
-export type MealPlan = "BB" | "HB" | "FB" | "FI";
+export type MealPlan = "NO_MEALS" | "BB" | "HB" | "FB" | "FI";
 export type PricingBasis = "PER_PERSON" | "PER_ROOM";
 export type VehicleType = "VAN" | "JEEP_5PAX" | "JEEP_8PAX";
 export type TrainClass = "FIRST" | "SECOND";
+export type LodgeActivityPricingBasis = "PER_PERSON" | "PER_GROUP" | "FIXED_PRICE";
 
 export const SEASON_LABELS: Record<Season, string> = {
   LOW: "Low Season",
@@ -13,10 +14,17 @@ export const SEASON_LABELS: Record<Season, string> = {
 };
 
 export const MEAL_PLAN_LABELS: Record<MealPlan, string> = {
+  NO_MEALS: "No Meals",
   BB: "Bed & Breakfast",
   HB: "Half Board",
   FB: "Full Board",
   FI: "Fully Inclusive",
+};
+
+export const LODGE_ACTIVITY_PRICING_BASIS_LABELS: Record<LodgeActivityPricingBasis, string> = {
+  PER_PERSON: "Per Person",
+  PER_GROUP: "Per Group",
+  FIXED_PRICE: "Fixed Price",
 };
 
 export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
@@ -186,6 +194,25 @@ export interface MiscLineData {
   currency: Currency;
 }
 
+/**
+ * A Lodge Activity: an activity specific to one accommodation (e.g. a
+ * guided bush walk only available to guests staying there), never a
+ * standalone general Activity. `quantity` means participants (PER_PERSON),
+ * number of group bookings (PER_GROUP), or is always 1 (FIXED_PRICE).
+ */
+export interface LodgeActivityLineData {
+  category: "LODGE_ACTIVITY";
+  accommodationId: string;
+  accommodationName: string;
+  activityId: string;
+  activityName: string;
+  pricingBasis: LodgeActivityPricingBasis;
+  quantity: number;
+  unitPriceCents: number;
+  currency: Currency;
+  notes: string | null;
+}
+
 export type LineItemData =
   | AccommodationLineData
   | TransportLineData
@@ -195,7 +222,8 @@ export type LineItemData =
   | ParkEntranceFeeLineData
   | FlightLineData
   | VillaLineData
-  | MiscLineData;
+  | MiscLineData
+  | LodgeActivityLineData;
 
 export type LineItemCategory = LineItemData["category"];
 
@@ -209,6 +237,7 @@ export const CATEGORY_LABELS: Record<LineItemCategory, string> = {
   DOMESTIC_FLIGHT: "Domestic Flight",
   VILLA: "Villa",
   MISC: "Misc",
+  LODGE_ACTIVITY: "Lodge Activity",
 };
 
 export function parseLineItemData(json: string): LineItemData {

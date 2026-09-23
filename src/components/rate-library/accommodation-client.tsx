@@ -63,6 +63,8 @@ export function AccommodationLibraryClient({
                   <p className="mt-1.5 text-[12px] text-muted">
                     {item.roomTypes.length} room type{item.roomTypes.length !== 1 ? "s" : ""} · {item.rates.length} rate
                     {item.rates.length !== 1 ? "s" : ""} · {item.currency}
+                    {item.activities.length > 0 &&
+                      ` · ${item.activities.length} lodge activit${item.activities.length !== 1 ? "ies" : "y"}`}
                   </p>
                 </div>
                 <RowActions

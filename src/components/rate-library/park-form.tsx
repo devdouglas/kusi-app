@@ -117,7 +117,7 @@ export function ParkForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit park" : "Add park"} onClose={onClose} width="max-w-2xl">
+    <Modal open title={initial ? "Edit park" : "Add park"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-5">
         <div>
           <Label htmlFor="name">Park name</Label>

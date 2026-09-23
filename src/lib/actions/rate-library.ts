@@ -12,6 +12,7 @@ import {
   activityRateInput,
   flightRateInput,
   parkInput,
+  accommodationActivityInput,
   type AccommodationInput,
   type TransportRateInput,
   type TrainJourneyInput,
@@ -19,6 +20,7 @@ import {
   type ActivityRateInput,
   type FlightRateInput,
   type ParkInput,
+  type AccommodationActivityInput,
 } from "@/lib/validation/rate-library";
 
 function revalidateLibrary() {
@@ -56,6 +58,7 @@ export async function listAccommodations(opts: { search?: string; includeArchive
       roomTypes: { orderBy: { sortOrder: "asc" } },
       rates: { include: { childRates: true } },
       childAgeBrackets: { orderBy: { sortOrder: "asc" } },
+      activities: { orderBy: { name: "asc" } },
     },
   });
 }
@@ -67,6 +70,7 @@ export async function getAccommodation(id: string) {
       roomTypes: { orderBy: { sortOrder: "asc" } },
       rates: { include: { childRates: true } },
       childAgeBrackets: { orderBy: { sortOrder: "asc" } },
+      activities: { orderBy: { name: "asc" } },
     },
   });
 }
@@ -297,6 +301,20 @@ export async function duplicateAccommodation(id: string) {
     }
   }
 
+  if (source.activities.length > 0) {
+    await prisma.accommodationActivity.createMany({
+      data: source.activities.map((a) => ({
+        accommodationId: copy.id,
+        name: a.name,
+        pricingBasis: a.pricingBasis,
+        amountCents: a.amountCents,
+        currency: a.currency,
+        notes: a.notes,
+        archived: a.archived,
+      })),
+    });
+  }
+
   revalidateLibrary();
   return getAccommodation(copy.id);
 }
@@ -309,7 +327,88 @@ export async function archiveAccommodation(id: string, archived: boolean) {
 export async function deleteAccommodation(id: string) {
   const used = await prisma.quoteLineItem.findFirst({ where: { sourceId: id, category: "ACCOMMODATION" } });
   if (used) throw new Error("This accommodation is used in a saved quote — archive it instead of deleting.");
+  const activityIds = (await prisma.accommodationActivity.findMany({ where: { accommodationId: id }, select: { id: true } })).map(
+    (a) => a.id
+  );
+  if (activityIds.length > 0) {
+    const usedActivity = await prisma.quoteLineItem.findFirst({
+      where: { category: "LODGE_ACTIVITY", sourceId: { in: activityIds } },
+    });
+    if (usedActivity) {
+      throw new Error("A Lodge Activity for this accommodation is used in a saved quote — archive it instead of deleting.");
+    }
+  }
   await prisma.accommodation.delete({ where: { id } });
+  revalidateLibrary();
+}
+
+// ---------------------------------------------------------------------------
+// Accommodation: Lodge Activities
+// ---------------------------------------------------------------------------
+
+export async function listAccommodationActivities(accommodationId: string, opts: { includeArchived?: boolean } = {}) {
+  return prisma.accommodationActivity.findMany({
+    where: { accommodationId, archived: opts.includeArchived ? undefined : false },
+    orderBy: { name: "asc" },
+  });
+}
+
+export async function createAccommodationActivity(accommodationId: string, raw: AccommodationActivityInput) {
+  const input = accommodationActivityInput.parse(raw);
+  const activity = await prisma.accommodationActivity.create({
+    data: {
+      accommodationId,
+      name: input.name,
+      pricingBasis: input.pricingBasis,
+      amountCents: amountToCents(input.amount),
+      currency: input.currency,
+      notes: input.notes || null,
+    },
+  });
+  revalidateLibrary();
+  return activity;
+}
+
+export async function updateAccommodationActivity(id: string, raw: AccommodationActivityInput) {
+  const input = accommodationActivityInput.parse(raw);
+  const activity = await prisma.accommodationActivity.update({
+    where: { id },
+    data: {
+      name: input.name,
+      pricingBasis: input.pricingBasis,
+      amountCents: amountToCents(input.amount),
+      currency: input.currency,
+      notes: input.notes || null,
+    },
+  });
+  revalidateLibrary();
+  return activity;
+}
+
+export async function duplicateAccommodationActivity(id: string) {
+  const source = await prisma.accommodationActivity.findUniqueOrThrow({ where: { id } });
+  const copy = await prisma.accommodationActivity.create({
+    data: {
+      accommodationId: source.accommodationId,
+      name: `${source.name} (Copy)`,
+      pricingBasis: source.pricingBasis,
+      amountCents: source.amountCents,
+      currency: source.currency,
+      notes: source.notes,
+    },
+  });
+  revalidateLibrary();
+  return copy;
+}
+
+export async function archiveAccommodationActivity(id: string, archived: boolean) {
+  await prisma.accommodationActivity.update({ where: { id }, data: { archived } });
+  revalidateLibrary();
+}
+
+export async function deleteAccommodationActivity(id: string) {
+  await assertNotUsed(id, "LODGE_ACTIVITY", "This activity is used in a saved quote — archive it instead of deleting.");
+  await prisma.accommodationActivity.delete({ where: { id } });
   revalidateLibrary();
 }
 

@@ -311,6 +311,40 @@ checked, they're included and every sheet gains a `Status` (Active/Archived)
 column — otherwise the column is omitted entirely, since it would carry no
 information.
 
+### No Meals, long Room Type labels, and Lodge Activities
+
+Three Accommodation Rate Library improvements, all purely additive (one
+migration, no destructive changes, no schema change was even needed for the
+Room Type length — Prisma's plain `String` already maps to unbounded
+Postgres `text`, so that was a UI/validation change only):
+
+- **No Meals** (`MealPlan.NO_MEALS`) is a normal meal plan — the same enum,
+  label map (`MEAL_PLAN_LABELS`) and dropdown used everywhere else, so
+  nothing category-specific was needed to make it work in the Quote
+  Builder, snapshots, Word export or the Excel export.
+- **Room Type names** have a generous 300-character Zod ceiling (well past
+  the "~150" ask) rather than a technical limit — the column was already
+  unbounded. The Rate Library UI widens the relevant inputs/selects and
+  wraps the Excel "Room Type" column instead of truncating.
+- **Lodge Activities** (`AccommodationActivity`) are accommodation-specific
+  activities — never general standalone Activities — managed as their own
+  small CRUD list inside an accommodation's Rate Library record
+  (`src/components/rate-library/lodge-activities-section.tsx`), with a
+  `LodgeActivityPricingBasis` (`PER_PERSON` / `PER_GROUP` / `FIXED_PRICE`)
+  kept as its own enum so a future per-activity child-pricing layer doesn't
+  require reshaping accommodation pricing too. In the Quote Builder,
+  "Lodge Activity" is its own category in Add Item, scoped to accommodations
+  already on the quote (`src/components/quote-builder/forms/lodge-activity-item-form.tsx`);
+  its total is computed by `computeLodgeActivityTotal()` (the same
+  `unitCents × quantity` shared calculation as every other simple category)
+  and contributes to Day Total / Total Party / snapshots / Word / Excel
+  exactly like any other line item, with no special-casing anywhere in
+  `deriveQuote()`. Removing an accommodation that still has linked Lodge
+  Activities on the quote shows a confirmation warning first (the
+  activities are never silently deleted). On Excel export, Lodge Activities
+  ride along as their own "Lodge Activities" worksheet whenever
+  Accommodation is selected — never a separate top-level category to pick.
+
 ### Future margin / selling-price architecture
 
 Version 1 only ever calculates **cost**. The `Quote` model already has
@@ -347,6 +381,11 @@ A few judgment calls where the spec allowed for a sensible default:
   `Stepper`). Plain `clsx` doesn't resolve conflicting utilities (e.g. a
   caller's `w-24` losing to the component's own `w-full`) deterministically
   — this had already surfaced as a real, silently-broken layout in one form.
+- **All Add/Edit modals are ~95% of the viewport width** (`width="max-w-[95vw]"`
+  on every `Modal` call for a create/edit form, across both the Rate
+  Library and the Quote Builder), at the user's explicit request — this
+  gives the longer inputs added for Room Type names and the new rate-grid
+  columns room to breathe without a second design pass per form.
 
 ## Tests
 
@@ -354,20 +393,28 @@ A few judgment calls where the spec allowed for a sensible default:
 npm run test
 ```
 
-86 tests covering: currency conversion and formatting, every category's
+115 tests covering: currency conversion and formatting, every category's
 pricing rule (accommodation per-person and per-room, transport, train,
-transfer, activity, park entrance fee, flight, villa, misc), child age
-bracket matching/validation/overlap detection (including the same age
-mapping to different brackets for different suppliers), trip date /
+transfer, activity, park entrance fee, flight, villa, misc, lodge
+activity — Per Person / Per Group / Fixed Price), child age bracket
+matching/validation/overlap detection (including the same age mapping to
+different brackets for different suppliers), trip date /
 private-vehicle-day math, quote totals and price-per-person, Daily Totals
 (correct aggregation, updates on quantity/override/KES changes, sum equals
 Total Party with no double counting), the Rate Library Excel export
 (flattening each category including nested accommodation/park child
-brackets, USD/KES conversion, archived-rate inclusion/exclusion, worksheet
-selection and naming, and a real read-back of the generated `.xlsx` to
-prove it's a valid file), and integration scenarios run against a real
-database: the two historical-snapshot scenarios (Rate Library price
-change, exchange rate change), accommodation bracket matching end-to-end,
-the missing-bracket error path, Park Entrance Fees (adults + children,
-KES, manual override, excluding one traveller), and a legacy quote (old
-child-category shape) rendering without error.
+brackets, No Meals and long Room Type names, Lodge Activities linked to
+the correct accommodation, USD/KES conversion, archived-rate
+inclusion/exclusion, worksheet selection and naming, and a real read-back
+of the generated `.xlsx` to prove it's a valid file), Word export line
+rendering for No Meals / long Room Type names / each Lodge Activity
+pricing basis, and integration scenarios run against a real database: the
+two historical-snapshot scenarios (Rate Library price change, exchange
+rate change), accommodation bracket matching end-to-end, the
+missing-bracket error path, Park Entrance Fees (adults + children, KES,
+manual override, excluding one traveller), a legacy quote (old
+child-category shape) rendering without error, and Lodge Activities
+end-to-end (zero/multiple activities per accommodation, each pricing
+basis, USD/KES, manual override, Daily Total / Total Party contribution,
+a frozen snapshot after the Rate Library price changes, and activities
+correctly scoped to their own accommodation).

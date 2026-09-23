@@ -14,6 +14,7 @@ export function DayCard({
   dayTotalUsdCents,
   onAddItem,
   onEditItem,
+  lodgeActivityAccommodationIds,
 }: {
   dayNumber: number;
   date: Date;
@@ -21,6 +22,8 @@ export function DayCard({
   dayTotalUsdCents: number;
   onAddItem: () => void;
   onEditItem: (ctx: EditContext) => void;
+  /** Accommodation ids (sourceId) that have Lodge Activities depending on them somewhere in the quote. */
+  lodgeActivityAccommodationIds: Set<string>;
 }) {
   return (
     <Card>
@@ -37,7 +40,14 @@ export function DayCard({
         {lineItems.length === 0 ? (
           <p className="text-[13px] text-muted">No items yet.</p>
         ) : (
-          lineItems.map((item) => <LineItemRow key={item.id} item={item} onEdit={onEditItem} />)
+          lineItems.map((item) => (
+            <LineItemRow
+              key={item.id}
+              item={item}
+              onEdit={onEditItem}
+              hasLinkedLodgeActivities={item.category === "ACCOMMODATION" && !!item.sourceId && lodgeActivityAccommodationIds.has(item.sourceId)}
+            />
+          ))
         )}
       </div>
       {lineItems.length > 0 && (

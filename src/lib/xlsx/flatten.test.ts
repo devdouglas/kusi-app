@@ -5,9 +5,11 @@ import {
   flattenTransportRates,
   flattenParkEntranceRates,
   flattenFlightRates,
+  flattenLodgeActivities,
 } from "@/lib/xlsx/flatten";
 import type { AccommodationRecord } from "@/components/rate-library/accommodation-form";
 import type { ParkRecord } from "@/components/rate-library/park-form";
+import type { AccommodationActivityRecord } from "@/components/rate-library/lodge-activities-section";
 import type { TransportRate, FlightRate } from "@prisma/client";
 
 const RATE_MICROS = rateToMicros(130);
@@ -21,6 +23,7 @@ function accommodation(overrides: Partial<AccommodationRecord> = {}): Accommodat
     currency: "USD",
     pricingBasis: "PER_PERSON",
     archived: false,
+    activities: [],
     roomTypes: [{ id: "rt-1", name: "Standard", sortOrder: 0 }],
     childAgeBrackets: [
       { id: "b-1", minAge: 0, maxAge: 4, label: "Under 5", sortOrder: 0 },
@@ -166,6 +169,25 @@ describe("flattenAccommodationRates", () => {
     const rows = flattenAccommodationRates([], { rateMicros: RATE_MICROS, includeArchived: false });
     expect(rows).toEqual([]);
   });
+
+  it("exports a No Meals rate row exactly like any other meal plan", () => {
+    const noMeals = accommodation({
+      rates: [{ ...accommodation().rates[0], mealPlan: "NO_MEALS" }],
+    });
+    const rows = flattenAccommodationRates([noMeals], { rateMicros: RATE_MICROS, includeArchived: false });
+    expect(rows[0].mealPlan).toBe("No Meals");
+  });
+
+  it("exports a long room type name in full, untruncated", () => {
+    const longName =
+      "Family Safari Tent with Two Bedrooms, Private Veranda, Outdoor Shower and Uninterrupted Views of the Samburu Riverine Forest";
+    const longRoom = accommodation({
+      roomTypes: [{ id: "rt-1", name: longName, sortOrder: 0 }],
+    });
+    const rows = flattenAccommodationRates([longRoom], { rateMicros: RATE_MICROS, includeArchived: false });
+    expect(rows[0].roomType).toBe(longName);
+    expect(rows[0].roomType.length).toBe(longName.length);
+  });
 });
 
 describe("flattenParkEntranceRates", () => {
@@ -263,5 +285,66 @@ describe("flattenTransportRates / flattenFlightRates (simple categories)", () =>
     const withArchived = flattenFlightRates([active, archived], { rateMicros: RATE_MICROS, includeArchived: true });
     expect(withArchived).toHaveLength(2);
     expect(withArchived.find((r) => r.route === "Nairobi → Malindi")?.status).toBe("Archived");
+  });
+});
+
+describe("flattenLodgeActivities", () => {
+  function activity(overrides: Partial<AccommodationActivityRecord> = {}): AccommodationActivityRecord {
+    return {
+      id: "act-1",
+      accommodationId: "acc-1",
+      name: "Guided Bush Walk",
+      pricingBasis: "PER_PERSON",
+      amountCents: 3500,
+      currency: "USD",
+      notes: null,
+      archived: false,
+      ...overrides,
+    };
+  }
+
+  it("links each activity to its own accommodation (name and location), never mixing lodges", () => {
+    const lodgeA = accommodation({ id: "acc-a", name: "Lodge A", location: "Samburu" });
+    const lodgeB = accommodation({ id: "acc-b", name: "Lodge B", location: "Amboseli" });
+    lodgeA.activities = [activity({ accommodationId: "acc-a", name: "Lodge A Walk" })];
+    lodgeB.activities = [activity({ accommodationId: "acc-b", id: "act-2", name: "Lodge B Walk" })];
+
+    const rows = flattenLodgeActivities([lodgeA, lodgeB], { rateMicros: RATE_MICROS, includeArchived: false });
+
+    expect(rows).toEqual([
+      expect.objectContaining({ accommodation: "Lodge A", location: "Samburu", activity: "Lodge A Walk" }),
+      expect.objectContaining({ accommodation: "Lodge B", location: "Amboseli", activity: "Lodge B Walk" }),
+    ]);
+  });
+
+  it("shows the correct pricing basis label and USD price for a USD activity", () => {
+    const lodge = accommodation({ activities: [activity({ pricingBasis: "PER_GROUP", amountCents: 12000 })] });
+    const rows = flattenLodgeActivities([lodge], { rateMicros: RATE_MICROS, includeArchived: false });
+    expect(rows[0]).toMatchObject({ pricingBasis: "Per Group", price: 120, currency: "USD", usdEquivalent: 120 });
+  });
+
+  it("computes the correct USD equivalent for a KES-denominated activity", () => {
+    const lodge = accommodation({ activities: [activity({ currency: "KES", amountCents: 130_000 })] });
+    const rows = flattenLodgeActivities([lodge], { rateMicros: RATE_MICROS, includeArchived: false });
+    expect(rows[0].currency).toBe("KES");
+    expect(rows[0].usdEquivalent).toBeCloseTo(10, 2); // 1,300 KES / 130 = USD 10
+  });
+
+  it("excludes an archived activity by default and includes it (with Status) when requested", () => {
+    const lodge = accommodation({
+      activities: [activity({ id: "act-active", name: "Active Activity" }), activity({ id: "act-archived", name: "Archived Activity", archived: true })],
+    });
+
+    const defaultRows = flattenLodgeActivities([lodge], { rateMicros: RATE_MICROS, includeArchived: false });
+    expect(defaultRows.map((r) => r.activity)).toEqual(["Active Activity"]);
+
+    const withArchived = flattenLodgeActivities([lodge], { rateMicros: RATE_MICROS, includeArchived: true });
+    expect(withArchived.map((r) => r.activity)).toEqual(["Active Activity", "Archived Activity"]);
+    expect(withArchived.find((r) => r.activity === "Archived Activity")?.status).toBe("Archived");
+  });
+
+  it("returns an empty array for an accommodation with zero Lodge Activities", () => {
+    const lodge = accommodation({ activities: [] });
+    expect(flattenLodgeActivities([lodge], { rateMicros: RATE_MICROS, includeArchived: false })).toEqual([]);
   });
 });

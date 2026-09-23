@@ -163,7 +163,7 @@ function TransportForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit vehicle rate" : "Add vehicle rate"} onClose={onClose}>
+    <Modal open title={initial ? "Edit vehicle rate" : "Add vehicle rate"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="vehicleType">Vehicle type</Label>

@@ -44,6 +44,7 @@ enum Season {
 }
 
 enum MealPlan {
+  NO_MEALS // No Meals
   BB // Bed & Breakfast
   HB // Half Board
   FB // Full Board
@@ -79,6 +80,17 @@ enum LineItemCategory {
   DOMESTIC_FLIGHT
   VILLA
   MISC
+  LODGE_ACTIVITY
+}
+
+// How a Lodge Activity's price is applied. Kept as its own enum (rather than
+// reusing PricingBasis) since a lodge activity supports a third mode
+// (FIXED_PRICE) that accommodation rates don't have — extensible if more
+// bases are needed later without touching accommodation pricing.
+enum LodgeActivityPricingBasis {
+  PER_PERSON
+  PER_GROUP
+  FIXED_PRICE
 }
 
 // ---------------------------------------------------------------------------
@@ -99,8 +111,37 @@ model Accommodation {
   roomTypes        AccommodationRoomType[]
   rates            AccommodationRate[]
   childAgeBrackets AccommodationChildAgeBracket[]
+  activities       AccommodationActivity[]
 
   @@index([name])
+  @@index([archived])
+}
+
+// A "Lodge Activity": an activity specific to one accommodation (e.g. a
+// guided bush walk only available to guests staying there), kept separate
+// from the general Activities Rate Library on purpose — it belongs to the
+// accommodation, not the other way around, and never appears as a
+// standalone general Activity. Version 1 prices it as a single flat
+// amount (no per-rate/season/child-bracket matrix like accommodation room
+// rates); `amountCents` + `pricingBasis` is deliberately its own small
+// shape so child-specific pricing could be layered on later without a
+// rebuild, the same way Accommodation/Park child brackets were added on
+// top of an existing flat-rate shape.
+model AccommodationActivity {
+  id              String                     @id @default(cuid())
+  accommodationId String
+  name            String
+  pricingBasis    LodgeActivityPricingBasis
+  amountCents     Int
+  currency        Currency
+  notes           String?
+  archived        Boolean                    @default(false)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  accommodation Accommodation @relation(fields: [accommodationId], references: [id], onDelete: Cascade)
+
+  @@index([accommodationId])
   @@index([archived])
 }
 

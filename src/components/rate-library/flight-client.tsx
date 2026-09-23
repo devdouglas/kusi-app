@@ -149,7 +149,7 @@ function FlightForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit flight route" : "Add flight route"} onClose={onClose}>
+    <Modal open title={initial ? "Edit flight route" : "Add flight route"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="route">Route</Label>

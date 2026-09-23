@@ -27,8 +27,8 @@ function formatBracketLine(ages: number[], priceCents: number, currency: Derived
   return `${ages.length} ${noun} ${ageWord} ${sorted.join(", ")} × ${formatMoney(priceCents, currency)}`;
 }
 
-/** Title line plus any number of detail lines describing a line item, mirroring the in-app display. */
-function lineItemDescription(li: DerivedLineItem): string[] {
+/** Title line plus any number of detail lines describing a line item, mirroring the in-app display. Exported for unit testing. */
+export function lineItemDescription(li: DerivedLineItem): string[] {
   const d = li.parsedData;
   switch (d.category) {
     case "ACCOMMODATION": {
@@ -63,6 +63,17 @@ function lineItemDescription(li: DerivedLineItem): string[] {
       return [li.description, `${d.nights} night${d.nights !== 1 ? "s" : ""}${d.quantity > 1 ? ` × ${d.quantity}` : ""}`];
     case "MISC":
       return [li.description, `Qty ${d.quantity}`];
+    case "LODGE_ACTIVITY": {
+      const lines = [li.description, d.accommodationName];
+      if (d.pricingBasis === "PER_PERSON") {
+        lines.push(`${d.quantity} participant${d.quantity !== 1 ? "s" : ""} × ${formatMoney(d.unitPriceCents, d.currency)}`);
+      } else if (d.pricingBasis === "PER_GROUP") {
+        lines.push(`${d.quantity} group${d.quantity !== 1 ? "s" : ""} × ${formatMoney(d.unitPriceCents, d.currency)}`);
+      } else {
+        lines.push(formatMoney(d.unitPriceCents, d.currency));
+      }
+      return lines;
+    }
     default:
       return [li.description];
   }

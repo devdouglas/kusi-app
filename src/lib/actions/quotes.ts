@@ -21,6 +21,7 @@ import {
   computeFlightTotal,
   computeVillaTotal,
   computeMiscTotal,
+  computeLodgeActivityTotal,
 } from "@/lib/calc/simple";
 import {
   serializeLineItemData,
@@ -35,6 +36,7 @@ import {
   type FlightLineData,
   type VillaLineData,
   type MiscLineData,
+  type LodgeActivityLineData,
 } from "@/types/line-items";
 import {
   quoteHeaderInput,
@@ -51,6 +53,7 @@ import {
   flightManualLineInput,
   villaLineInput,
   miscLineInput,
+  lodgeActivityLineInput,
   overrideLineInput,
   type QuoteHeaderInput,
 } from "@/lib/validation/quote";
@@ -1272,4 +1275,68 @@ export async function updateMiscLineItem(id: string, raw: unknown) {
   const updated = await prisma.quoteLineItem.update({ where: { id }, data: core });
   revalidateQuote(existing.day.quoteId);
   return updated;
+}
+
+// ---------------------------------------------------------------------------
+// Lodge Activities (accommodation-specific — see AccommodationActivity)
+// ---------------------------------------------------------------------------
+
+async function buildLodgeActivityLine(
+  input: ReturnType<typeof lodgeActivityLineInput.parse>,
+  quote: { rateMicros: number }
+): Promise<LineItemCreateCore> {
+  const activity = await prisma.accommodationActivity.findUniqueOrThrow({
+    where: { id: input.activityId },
+    include: { accommodation: true },
+  });
+  if (activity.accommodationId !== input.accommodationId) {
+    throw new Error("This activity does not belong to the selected accommodation.");
+  }
+  // Fixed Price always applies once, regardless of any quantity submitted.
+  const quantity = activity.pricingBasis === "FIXED_PRICE" ? 1 : input.quantity;
+  const result = computeLodgeActivityTotal(activity.amountCents, quantity, activity.currency, quote.rateMicros);
+  const data: LodgeActivityLineData = {
+    category: "LODGE_ACTIVITY",
+    accommodationId: activity.accommodationId,
+    accommodationName: activity.accommodation.name,
+    activityId: activity.id,
+    activityName: activity.name,
+    pricingBasis: activity.pricingBasis,
+    quantity,
+    unitPriceCents: activity.amountCents,
+    currency: activity.currency,
+    notes: activity.notes,
+  };
+  return {
+    category: "LODGE_ACTIVITY",
+    sourceId: activity.id,
+    description: activity.name,
+    originalCurrency: activity.currency,
+    originalUnitCents: activity.amountCents,
+    quantity,
+    originalTotalCents: result.originalTotalCents,
+    rateMicros: quote.rateMicros,
+    totalUsdCents: result.usdTotalCents,
+    manualOverride: false,
+    libraryTotalCents: result.originalTotalCents,
+    libraryCurrency: activity.currency,
+    data: serializeLineItemData(data),
+  };
+}
+
+export async function addLodgeActivityLineItem(raw: unknown) {
+  const input = lodgeActivityLineInput.parse(raw);
+  const day = await getDayWithQuote(input.dayId);
+  const core = await buildLodgeActivityLine(input, day.quote);
+  const sortOrder = await nextSortOrder(input.dayId);
+  const created = await prisma.quoteLineItem.create({ data: { dayId: input.dayId, sortOrder, ...core } });
+  revalidateQuote(day.quoteId);
+  return created;
+}
+
+export async function updateLodgeActivityLineItem(id: string, raw: unknown) {
+  const input = lodgeActivityLineInput.parse(raw);
+  const existing = await prisma.quoteLineItem.findUniqueOrThrow({ where: { id }, include: { day: { include: { quote: { include: { children: true } } } } } });
+  const core = await buildLodgeActivityLine(input, existing.day.quote);
+  return replaceLineItemCore(id, core);
 }

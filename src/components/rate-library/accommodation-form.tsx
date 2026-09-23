@@ -4,10 +4,11 @@ import { useState } from "react";
 import { createAccommodation, updateAccommodation } from "@/lib/actions/rate-library";
 import { validateBracketSet } from "@/lib/calc/child-brackets";
 import { centsToAmount, type Currency } from "@/lib/money";
-import { SEASON_LABELS, type Season, type MealPlan, type PricingBasis } from "@/types/line-items";
+import { SEASON_LABELS, MEAL_PLAN_LABELS, type Season, type MealPlan, type PricingBasis } from "@/types/line-items";
 import { Button } from "@/components/ui/button";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
+import { LodgeActivitiesSection, type AccommodationActivityRecord } from "@/components/rate-library/lodge-activities-section";
 
 export interface AccommodationRecord {
   id: string;
@@ -30,6 +31,7 @@ export interface AccommodationRecord {
     singleRoomCents: number | null;
     childRates: { bracketId: string; priceCents: number }[];
   }[];
+  activities: AccommodationActivityRecord[];
 }
 
 interface RoomTypeRow {
@@ -58,7 +60,7 @@ interface RateRow {
 }
 
 const SEASONS: Season[] = ["LOW", "SHOULDER", "HIGH"];
-const MEAL_PLANS: MealPlan[] = ["BB", "HB", "FB", "FI"];
+const MEAL_PLANS: MealPlan[] = ["NO_MEALS", "BB", "HB", "FB", "FI"];
 
 let tempKeyCounter = 0;
 function tempKey() {
@@ -98,6 +100,7 @@ function toRateRows(initial: AccommodationRecord | null): RateRow[] {
 
 export function AccommodationForm({
   initial,
+  rateMicros,
   onClose,
   onSaved,
 }: {
@@ -114,6 +117,7 @@ export function AccommodationForm({
   const [roomTypes, setRoomTypes] = useState<RoomTypeRow[]>(() => toRoomTypeRows(initial));
   const [brackets, setBrackets] = useState<BracketRow[]>(() => toBracketRows(initial));
   const [rates, setRates] = useState<RateRow[]>(() => toRateRows(initial));
+  const [activities, setActivities] = useState<AccommodationActivityRecord[]>(() => initial?.activities ?? []);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -233,7 +237,7 @@ export function AccommodationForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit accommodation" : "Add accommodation"} onClose={onClose} width="max-w-5xl">
+    <Modal open title={initial ? "Edit accommodation" : "Add accommodation"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
@@ -274,11 +278,15 @@ export function AccommodationForm({
           <div className="space-y-2">
             {roomTypes.map((rt) => (
               <div key={rt.key} className="flex items-center gap-2">
-                <Input
-                  value={rt.name}
-                  onChange={(e) => renameRoomType(rt.key, e.target.value)}
-                  placeholder="e.g. Deluxe Tent"
-                />
+                <div className="min-w-0 flex-1">
+                  <Input
+                    value={rt.name}
+                    onChange={(e) => renameRoomType(rt.key, e.target.value)}
+                    placeholder="e.g. Family Safari Tent with Two Bedrooms and Private Veranda"
+                    maxLength={300}
+                    title={rt.name}
+                  />
+                </div>
                 <Button type="button" size="sm" variant="ghost" onClick={() => removeRoomType(rt.key)}>
                   Remove
                 </Button>
@@ -384,7 +392,8 @@ export function AccommodationForm({
                         <Select
                           value={row.roomTypeKey}
                           onChange={(e) => updateRateRow(row.key, { roomTypeKey: e.target.value })}
-                          className="min-w-32 py-1.5"
+                          className="min-w-48 max-w-72 py-1.5"
+                          title={roomTypes.find((rt) => rt.key === row.roomTypeKey)?.name}
                         >
                           {roomTypes.map((rt) => (
                             <option key={rt.key} value={rt.key}>
@@ -410,11 +419,11 @@ export function AccommodationForm({
                         <Select
                           value={row.mealPlan}
                           onChange={(e) => updateRateRow(row.key, { mealPlan: e.target.value as MealPlan })}
-                          className="min-w-24 py-1.5"
+                          className="min-w-36 py-1.5"
                         >
                           {MEAL_PLANS.map((m) => (
                             <option key={m} value={m}>
-                              {m}
+                              {MEAL_PLAN_LABELS[m]}
                             </option>
                           ))}
                         </Select>
@@ -482,6 +491,22 @@ export function AccommodationForm({
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+        </div>
+
+        <div className="border-t border-border pt-6">
+          {initial ? (
+            <LodgeActivitiesSection
+              accommodationId={initial.id}
+              activities={activities}
+              rateMicros={rateMicros}
+              onChange={setActivities}
+            />
+          ) : (
+            <div>
+              <Label>Lodge Activities</Label>
+              <p className="text-[13px] text-muted">Save this accommodation first, then add its Lodge Activities.</p>
             </div>
           )}
         </div>

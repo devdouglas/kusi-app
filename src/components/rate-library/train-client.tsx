@@ -153,7 +153,7 @@ function TrainForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit train journey" : "Add train journey"} onClose={onClose}>
+    <Modal open title={initial ? "Edit train journey" : "Add train journey"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="route">Journey / route name</Label>

@@ -66,7 +66,7 @@ export function TripHeaderForm({
   }
 
   return (
-    <Modal open title="Edit trip details" onClose={onClose}>
+    <Modal open title="Edit trip details" onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-5">
         <FormRow>
           <div>

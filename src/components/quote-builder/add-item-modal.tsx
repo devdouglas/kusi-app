@@ -12,9 +12,11 @@ import { ParkItemForm } from "./forms/park-item-form";
 import { FlightItemForm } from "./forms/flight-item-form";
 import { VillaItemForm } from "./forms/villa-item-form";
 import { MiscItemForm } from "./forms/misc-item-form";
+import { LodgeActivityItemForm } from "./forms/lodge-activity-item-form";
 
 const CATEGORY_ORDER: LineItemCategory[] = [
   "ACCOMMODATION",
+  "LODGE_ACTIVITY",
   "PRIVATE_TRANSPORT",
   "TRAIN",
   "TAXI_TRANSFER",
@@ -38,6 +40,8 @@ export interface QuoteBuilderContext {
   adults: number;
   childAges: number[];
   totalPax: number;
+  /** Accommodations already added somewhere on this quote — used to scope the Lodge Activity picker. */
+  accommodationsInQuote: { id: string; name: string }[];
 }
 
 export function AddItemModal({
@@ -58,7 +62,7 @@ export function AddItemModal({
   const title = edit ? `Edit ${CATEGORY_LABELS[edit.category]}` : category ? `Add ${CATEGORY_LABELS[category]}` : "Add item";
 
   return (
-    <Modal open title={title} onClose={onClose} width={category === "ACCOMMODATION" ? "max-w-2xl" : "max-w-lg"}>
+    <Modal open title={title} onClose={onClose} width="max-w-[95vw]">
       {!category && !edit ? (
         <div className="grid grid-cols-2 gap-2">
           {CATEGORY_ORDER.map((c) => (
@@ -183,6 +187,17 @@ function renderForm(
           dayId={dayId}
           quote={quote}
           initial={edit?.data.category === "MISC" ? edit.data : undefined}
+          lineItemId={edit?.lineItemId}
+          onClose={onClose}
+          onSaved={onSaved}
+        />
+      );
+    case "LODGE_ACTIVITY":
+      return (
+        <LodgeActivityItemForm
+          dayId={dayId}
+          quote={quote}
+          initial={edit?.data.category === "LODGE_ACTIVITY" ? edit.data : undefined}
           lineItemId={edit?.lineItemId}
           onClose={onClose}
           onSaved={onSaved}

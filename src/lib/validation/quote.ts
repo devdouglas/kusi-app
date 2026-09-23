@@ -30,7 +30,7 @@ export const accommodationLineInput = z.object({
   accommodationId: z.string().min(1),
   roomTypeId: z.string().min(1),
   season: z.enum(["LOW", "SHOULDER", "HIGH"]),
-  mealPlan: z.enum(["BB", "HB", "FB", "FI"]),
+  mealPlan: z.enum(["NO_MEALS", "BB", "HB", "FB", "FI"]),
   // per-person
   adultsSharing: nonNegativeInt.optional(),
   adultsSingle: nonNegativeInt.optional(),
@@ -140,6 +140,15 @@ export const miscLineInput = z.object({
   quantity: positiveInt,
   notes: z.string().trim().optional(),
 });
+
+export const lodgeActivityLineInput = z.object({
+  dayId: z.string().min(1),
+  accommodationId: z.string().min(1),
+  activityId: z.string().min(1),
+  /** Participants (PER_PERSON) or number of group bookings (PER_GROUP); ignored for FIXED_PRICE. */
+  quantity: positiveInt,
+});
+export type LodgeActivityLineInput = z.infer<typeof lodgeActivityLineInput>;
 
 export const overrideLineInput = z.object({
   lineItemId: z.string().min(1),

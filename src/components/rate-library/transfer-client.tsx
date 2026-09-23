@@ -149,7 +149,7 @@ function TransferForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit transfer" : "Add transfer"} onClose={onClose}>
+    <Modal open title={initial ? "Edit transfer" : "Add transfer"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="route">Transfer / route name</Label>

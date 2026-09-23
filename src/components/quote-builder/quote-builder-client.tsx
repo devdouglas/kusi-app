@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DerivedQuote } from "@/lib/quote/derive";
 import { setQuoteStatus, duplicateQuote, deleteQuote, refreshQuoteExchangeRate } from "@/lib/actions/quotes";
@@ -34,11 +34,34 @@ export function QuoteBuilderClient({
   const [showHeaderForm, setShowHeaderForm] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  const accommodationsInQuote = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const day of days) {
+      for (const li of day.lineItems) {
+        if (li.parsedData.category === "ACCOMMODATION") {
+          map.set(li.parsedData.accommodationId, li.parsedData.accommodationName);
+        }
+      }
+    }
+    return Array.from(map, ([id, name]) => ({ id, name }));
+  }, [days]);
+
+  const lodgeActivityAccommodationIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const day of days) {
+      for (const li of day.lineItems) {
+        if (li.parsedData.category === "LODGE_ACTIVITY") ids.add(li.parsedData.accommodationId);
+      }
+    }
+    return ids;
+  }, [days]);
+
   const quoteContext = {
     rateMicros: quote.rateMicros,
     adults: quote.adults,
     childAges,
     totalPax,
+    accommodationsInQuote,
   };
   const childrenSummary = formatChildrenSummary(childAges);
 
@@ -175,6 +198,7 @@ export function QuoteBuilderClient({
               data: li.parsedData,
             }))}
             dayTotalUsdCents={day.dayTotalUsdCents}
+            lodgeActivityAccommodationIds={lodgeActivityAccommodationIds}
             onAddItem={() => setAddItemDayId(day.id)}
             onEditItem={(ctx) => setEditContext({ dayId: day.id, edit: ctx })}
           />

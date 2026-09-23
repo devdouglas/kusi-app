@@ -7,7 +7,11 @@ const childAgeNum = z.number().int().min(MIN_CHILD_AGE, `Ages cannot be below ${
 
 export const roomTypeInput = z.object({
   id: z.string().optional(), // present when editing an existing room type
-  name: z.string().trim().min(1, "Room type name is required"),
+  // Room type names can be elaborate ("Family Safari Tent with Two Bedrooms
+  // and Private Veranda") — 300 is a generous ceiling, not a realistic
+  // limit, and the underlying column is unbounded Postgres `text` so this
+  // is purely a sanity cap, never a truncation.
+  name: z.string().trim().min(1, "Room type name is required").max(300, "Room type name is too long"),
 });
 
 /** An accommodation-specific child age bracket (no price here — price lives per rate row, see accommodationRateInput.childPrices). */
@@ -24,7 +28,7 @@ export const accommodationRateInput = z.object({
   id: z.string().optional(),
   roomTypeId: z.string().min(1),
   season: z.enum(["LOW", "SHOULDER", "HIGH"]),
-  mealPlan: z.enum(["BB", "HB", "FB", "FI"]),
+  mealPlan: z.enum(["NO_MEALS", "BB", "HB", "FB", "FI"]),
   // PER_PERSON
   adultSharing: nonNegative.optional(),
   single: nonNegative.optional().nullable(),
@@ -115,3 +119,14 @@ export const flightRateInput = z.object({
   notes: z.string().trim().optional().nullable(),
 });
 export type FlightRateInput = z.infer<typeof flightRateInput>;
+
+/** A Lodge Activity: an activity specific to one accommodation (see AccommodationActivity in schema.prisma). */
+export const accommodationActivityInput = z.object({
+  id: z.string().optional(),
+  name: z.string().trim().min(1, "Activity name is required"),
+  pricingBasis: z.enum(["PER_PERSON", "PER_GROUP", "FIXED_PRICE"]),
+  amount: nonNegative,
+  currency,
+  notes: z.string().trim().optional().nullable(),
+});
+export type AccommodationActivityInput = z.infer<typeof accommodationActivityInput>;

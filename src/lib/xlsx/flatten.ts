@@ -1,6 +1,13 @@
 import type { TransportRate, TrainJourney, TransferRate, ActivityRate, FlightRate } from "@prisma/client";
 import { centsToAmount, toUsdCents, type RateMicros } from "@/lib/money";
-import { SEASON_LABELS, MEAL_PLAN_LABELS, VEHICLE_TYPE_LABELS, type Season, type MealPlan } from "@/types/line-items";
+import {
+  SEASON_LABELS,
+  MEAL_PLAN_LABELS,
+  VEHICLE_TYPE_LABELS,
+  LODGE_ACTIVITY_PRICING_BASIS_LABELS,
+  type Season,
+  type MealPlan,
+} from "@/types/line-items";
 import { bracketLabel } from "@/lib/calc/child-brackets";
 import type { AccommodationRecord } from "@/components/rate-library/accommodation-form";
 import type { ParkRecord } from "@/components/rate-library/park-form";
@@ -12,6 +19,7 @@ import type {
   ActivityExportRow,
   ParkExportRow,
   FlightExportRow,
+  LodgeActivityExportRow,
   ExportStatus,
 } from "@/lib/xlsx/types";
 
@@ -271,4 +279,41 @@ export function flattenFlightRates(
         includeArchived
       )
     );
+}
+
+/**
+ * Lodge Activities are accommodation-specific (never general Activities), so
+ * this is never a standalone export category — it's only generated as an
+ * extra worksheet when Accommodation itself is selected for export.
+ */
+export function flattenLodgeActivities(
+  items: AccommodationRecord[],
+  { rateMicros, includeArchived }: ArchivableOpts
+): LodgeActivityExportRow[] {
+  const rows: LodgeActivityExportRow[] = [];
+
+  for (const acc of items) {
+    if (!includeArchived && acc.archived) continue;
+    for (const activity of acc.activities) {
+      if (!includeArchived && activity.archived) continue;
+      rows.push(
+        withStatus<LodgeActivityExportRow>(
+          {
+            accommodation: acc.name,
+            location: acc.location,
+            activity: activity.name,
+            pricingBasis: LODGE_ACTIVITY_PRICING_BASIS_LABELS[activity.pricingBasis],
+            price: centsToAmount(activity.amountCents),
+            currency: activity.currency,
+            usdEquivalent: centsToAmount(toUsdCents(activity.amountCents, activity.currency, rateMicros)),
+            notes: activity.notes,
+          },
+          activity.archived,
+          includeArchived
+        )
+      );
+    }
+  }
+
+  return rows;
 }

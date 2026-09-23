@@ -79,3 +79,18 @@ export function computeMiscTotal(
 ): LineTotalResult {
   return computeLineTotal(unitPriceCents, quantity, currency, rateMicros);
 }
+
+/**
+ * Lodge Activity: price x quantity, where "quantity" means participants
+ * (PER_PERSON), number of group bookings (PER_GROUP), or is always 1
+ * (FIXED_PRICE) — the caller is responsible for passing the right quantity
+ * for the activity's pricingBasis; the arithmetic is identical either way.
+ */
+export function computeLodgeActivityTotal(
+  unitPriceCents: number,
+  quantity: number,
+  currency: Currency,
+  rateMicros: RateMicros
+): LineTotalResult {
+  return computeLineTotal(unitPriceCents, quantity, currency, rateMicros);
+}

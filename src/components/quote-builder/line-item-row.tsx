@@ -69,6 +69,17 @@ function detailLines(data: LineItemData): string[] {
       return [`${data.nights} night${data.nights !== 1 ? "s" : ""}${data.quantity > 1 ? ` × ${data.quantity}` : ""}`];
     case "MISC":
       return [`Qty ${data.quantity}`];
+    case "LODGE_ACTIVITY": {
+      const lines = [data.accommodationName];
+      if (data.pricingBasis === "PER_PERSON") {
+        lines.push(`${data.quantity} participant${data.quantity !== 1 ? "s" : ""} × ${formatMoney(data.unitPriceCents, data.currency)}`);
+      } else if (data.pricingBasis === "PER_GROUP") {
+        lines.push(`${data.quantity} group${data.quantity !== 1 ? "s" : ""} × ${formatMoney(data.unitPriceCents, data.currency)}`);
+      } else {
+        lines.push(formatMoney(data.unitPriceCents, data.currency));
+      }
+      return lines;
+    }
     default:
       return [];
   }
@@ -84,20 +95,37 @@ const CAN_OVERRIDE: Record<LineItemData["category"], boolean> = {
   DOMESTIC_FLIGHT: true,
   VILLA: false,
   MISC: false,
+  LODGE_ACTIVITY: true,
 };
 
 export function LineItemRow({
   item,
   onEdit,
+  hasLinkedLodgeActivities = false,
 }: {
   item: LineItemRowData;
   onEdit: (ctx: EditContext) => void;
+  /** True when this ACCOMMODATION item has Lodge Activities elsewhere on the quote that depend on it. */
+  hasLinkedLodgeActivities?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [showOverride, setShowOverride] = useState(false);
   const details = detailLines(item.data);
   const canOverride = CAN_OVERRIDE[item.category] && item.libraryTotalCents != null;
+
+  async function handleRemove() {
+    if (item.category === "ACCOMMODATION" && hasLinkedLodgeActivities) {
+      const accommodationName = item.data.category === "ACCOMMODATION" ? item.data.accommodationName : "this accommodation";
+      const proceed = confirm(
+        `This quote contains Lodge Activities linked to ${accommodationName}. Removing the accommodation will not automatically remove those activities. Review the linked activities before continuing.\n\nRemove the accommodation anyway?`
+      );
+      if (!proceed) return;
+    }
+    setBusy(true);
+    await removeLineItem(item.id);
+    router.refresh();
+  }
 
   return (
     <div className="flex items-start justify-between gap-4 rounded-xl border border-border bg-white px-4 py-3">
@@ -145,16 +173,7 @@ export function LineItemRow({
           >
             Duplicate
           </Button>
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              await removeLineItem(item.id);
-              router.refresh();
-            }}
-          >
+          <Button size="sm" variant="danger" disabled={busy} onClick={handleRemove}>
             Remove
           </Button>
         </div>

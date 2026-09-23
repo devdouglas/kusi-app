@@ -11,6 +11,7 @@ import {
   type ActivityExportRow,
   type ParkExportRow,
   type FlightExportRow,
+  type LodgeActivityExportRow,
 } from "@/lib/xlsx/types";
 
 const SAGE = "FF8A9270";
@@ -49,7 +50,7 @@ export function accommodationColumns(includeArchived: boolean): ExportColumn<Acc
   return [
     { header: "Accommodation", key: "accommodation", width: 26, value: (r) => r.accommodation },
     { header: "Location", key: "location", width: 18, value: (r) => r.location },
-    { header: "Room Type", key: "roomType", width: 16, value: (r) => r.roomType },
+    { header: "Room Type", key: "roomType", width: 32, wrap: true, value: (r) => r.roomType },
     { header: "Season", key: "season", width: 14, value: (r) => r.season },
     { header: "Meal Plan", key: "mealPlan", width: 16, value: (r) => r.mealPlan },
     { header: "Pricing Basis", key: "pricingBasis", width: 13, value: (r) => r.pricingBasis },
@@ -125,6 +126,18 @@ export function flightColumns(includeArchived: boolean): ExportColumn<FlightExpo
     ...moneyColumns<FlightExportRow>((r) => r.price, (r) => r.currency, (r) => r.usdEquivalent),
     notesColumn((r) => r.notes),
     ...(includeArchived ? [statusColumn<FlightExportRow>()] : []),
+  ];
+}
+
+export function lodgeActivityColumns(includeArchived: boolean): ExportColumn<LodgeActivityExportRow>[] {
+  return [
+    { header: "Accommodation", key: "accommodation", width: 26, value: (r) => r.accommodation },
+    { header: "Location", key: "location", width: 18, value: (r) => r.location },
+    { header: "Activity", key: "activity", width: 26, value: (r) => r.activity },
+    { header: "Pricing Basis", key: "pricingBasis", width: 15, value: (r) => r.pricingBasis },
+    ...moneyColumns<LodgeActivityExportRow>((r) => r.price, (r) => r.currency, (r) => r.usdEquivalent),
+    notesColumn((r) => r.notes),
+    ...(includeArchived ? [statusColumn<LodgeActivityExportRow>()] : []),
   ];
 }
 

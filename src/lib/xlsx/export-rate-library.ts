@@ -17,6 +17,7 @@ import {
   flattenActivityRates,
   flattenParkEntranceRates,
   flattenFlightRates,
+  flattenLodgeActivities,
 } from "@/lib/xlsx/flatten";
 import {
   addCategorySheet,
@@ -28,6 +29,7 @@ import {
   activityColumns,
   parkColumns,
   flightColumns,
+  lodgeActivityColumns,
 } from "@/lib/xlsx/workbook";
 import { EXPORT_CATEGORY_ORDER, EXPORT_CATEGORY_LABELS, type ExportCategory } from "@/lib/xlsx/types";
 
@@ -79,6 +81,12 @@ export async function exportFlightRates(opts: { includeArchived: boolean; rateMi
   return flattenFlightRates(items, opts);
 }
 
+/** Lodge Activities are never a standalone export category — only generated as an extra sheet alongside Accommodation. */
+export async function exportLodgeActivities(opts: { includeArchived: boolean; rateMicros: RateMicros }) {
+  const items = await listAccommodations({ includeArchived: true });
+  return flattenLodgeActivities(items, opts);
+}
+
 /** Builds the full workbook for the selected categories. Never touches the database — read-only, export only. */
 export async function buildRateLibraryWorkbook(opts: RateLibraryExportOptions): Promise<ExcelJS.Workbook> {
   const { categories, includeArchived, rateMicros } = opts;
@@ -106,6 +114,11 @@ export async function buildRateLibraryWorkbook(opts: RateLibraryExportOptions): 
       case "ACCOMMODATION": {
         const rows = await exportAccommodationRates(flattenOpts);
         addCategorySheet(workbook, sheetName, accommodationColumns(includeArchived), rows);
+        // Lodge Activities are accommodation-specific data, so they ride
+        // along as their own sheet whenever Accommodation is exported,
+        // rather than being a separate top-level category to select.
+        const lodgeActivityRows = await exportLodgeActivities(flattenOpts);
+        addCategorySheet(workbook, "Lodge Activities", lodgeActivityColumns(includeArchived), lodgeActivityRows);
         break;
       }
       case "PRIVATE_TRANSPORT": {

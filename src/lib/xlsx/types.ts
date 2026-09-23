@@ -134,3 +134,16 @@ export interface FlightExportRow {
   notes: string | null;
   status?: ExportStatus;
 }
+
+/** Lodge Activities: accommodation-specific activities, only exported alongside the Accommodation sheet (never a standalone category). */
+export interface LodgeActivityExportRow {
+  accommodation: string;
+  location: string;
+  activity: string;
+  pricingBasis: string;
+  price: number;
+  currency: Currency;
+  usdEquivalent: number;
+  notes: string | null;
+  status?: ExportStatus;
+}

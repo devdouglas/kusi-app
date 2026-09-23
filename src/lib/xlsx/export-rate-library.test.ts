@@ -11,6 +11,7 @@ import {
   createPark,
   createFlightRate,
   archiveFlightRate,
+  createAccommodationActivity,
 } from "@/lib/actions/rate-library";
 import { buildRateLibraryWorkbook, rateLibraryExportFilename } from "@/lib/xlsx/export-rate-library";
 import { microsToRateNumber } from "@/lib/money";
@@ -49,6 +50,7 @@ beforeAll(async () => {
     ],
   });
   createdAccommodationIds.push(acc!.id);
+  await createAccommodationActivity(acc!.id, { name: "Guided Bush Walk", pricingBasis: "PER_PERSON", amount: 35, currency: "USD" });
 
   const transport = await createTransportRate({ vehicleType: "JEEP_5PAX", price: 150, currency: "USD" });
   createdTransportIds.push(transport.id);
@@ -100,11 +102,11 @@ async function buildAndReload(...args: Parameters<typeof buildRateLibraryWorkboo
 }
 
 describe("Rate Library Excel export", () => {
-  it("exports a single category as one worksheet, plus the Export Info sheet", async () => {
+  it("exports a single category as one worksheet, plus the Export Info sheet (and Lodge Activities, since Accommodation carries its own activities sheet)", async () => {
     const rateMicros = await getExchangeRateMicros();
     const wb = await buildAndReload({ categories: ["ACCOMMODATION"], includeArchived: false, rateMicros });
 
-    expect(wb.worksheets.map((s) => s.name)).toEqual(["Export Info", "Accommodation"]);
+    expect(wb.worksheets.map((s) => s.name)).toEqual(["Export Info", "Accommodation", "Lodge Activities"]);
   });
 
   it("exports several selected categories as their own worksheets, in Rate Library tab order regardless of selection order", async () => {
@@ -116,7 +118,13 @@ describe("Rate Library Excel export", () => {
       rateMicros,
     });
 
-    expect(wb.worksheets.map((s) => s.name)).toEqual(["Export Info", "Accommodation", "Activities", "Domestic Flights"]);
+    expect(wb.worksheets.map((s) => s.name)).toEqual([
+      "Export Info",
+      "Accommodation",
+      "Lodge Activities",
+      "Activities",
+      "Domestic Flights",
+    ]);
   });
 
   it("exports all seven categories as their own worksheets", async () => {
@@ -135,10 +143,13 @@ describe("Rate Library Excel export", () => {
       rateMicros,
     });
 
-    expect(wb.worksheets).toHaveLength(8); // Export Info + 7 categories
+    expect(wb.worksheets).toHaveLength(9); // Export Info + 7 categories + Lodge Activities (rides along with Accommodation)
+    const labels = Object.values(EXPORT_CATEGORY_LABELS);
     expect(wb.worksheets.map((s) => s.name)).toEqual([
       "Export Info",
-      ...Object.values(EXPORT_CATEGORY_LABELS),
+      "Accommodation",
+      "Lodge Activities",
+      ...labels.slice(1),
     ]);
   });
 
@@ -195,6 +206,29 @@ describe("Rate Library Excel export", () => {
     });
     expect(rows.find((r) => r.travellerType === "Adult")?.price).toBe(80);
     expect(rows.filter((r) => r.travellerType === "Child")).toHaveLength(2);
+  });
+
+  it("generates a Lodge Activities sheet linked to the correct accommodation when Accommodation is exported", async () => {
+    const rateMicros = await getExchangeRateMicros();
+    const wb = await buildAndReload({ categories: ["ACCOMMODATION"], includeArchived: false, rateMicros });
+    const sheet = wb.getWorksheet("Lodge Activities")!;
+
+    const header = (sheet.getRow(1).values as unknown[]).slice(1).map(String);
+    expect(header).toEqual(["Accommodation", "Location", "Activity", "Pricing Basis", "Price", "Currency", "USD Equivalent", "Notes"]);
+
+    const accommodationCol = header.indexOf("Accommodation") + 1;
+    const activityCol = header.indexOf("Activity") + 1;
+    const priceCol = header.indexOf("Price") + 1;
+    const row = sheet.getRow(2);
+    expect(String(row.getCell(accommodationCol).value)).toBe("Export Test Lodge");
+    expect(String(row.getCell(activityCol).value)).toBe("Guided Bush Walk");
+    expect(Number(row.getCell(priceCol).value)).toBe(35);
+  });
+
+  it("does not generate a Lodge Activities sheet when Accommodation is not selected for export", async () => {
+    const rateMicros = await getExchangeRateMicros();
+    const wb = await buildAndReload({ categories: ["TRAIN"], includeArchived: false, rateMicros });
+    expect(wb.getWorksheet("Lodge Activities")).toBeUndefined();
   });
 
   it("represents the current exchange rate correctly on the Export Info sheet", async () => {

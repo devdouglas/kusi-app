@@ -153,7 +153,7 @@ function ActivityForm({
   }
 
   return (
-    <Modal open title={initial ? "Edit activity" : "Add activity"} onClose={onClose}>
+    <Modal open title={initial ? "Edit activity" : "Add activity"} onClose={onClose} width="max-w-[95vw]">
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
           <Label htmlFor="name">Activity name</Label>
