@@ -12,6 +12,7 @@ costings day by day.
 - **Zod** for input validation
 - **decimal.js** for exact currency arithmetic (see [Money handling](#money-handling))
 - **docx** for generating the internal Word quote summary
+- **exceljs** for generating the Rate Library Excel export
 - **Vitest** for unit + integration tests
 
 ## Agent / contributor notes (Prisma, Docker, Dokploy)
@@ -265,6 +266,51 @@ quotes still render their frozen `child5to12` / `childUnder5` breakdown
 correctly, and `deriveQuote` exposes `hasLegacyChildren` so the UI can
 acknowledge a quote has an unconvertible legacy child if needed.
 
+### Rate Library Excel export
+
+"Export to Excel" on the Rate Library toolbar (`src/components/rate-library/library-toolbar.tsx`)
+opens a modal to pick which categories to include (Select All, or one/several),
+plus an "Include archived rates" option. Confirming navigates to
+`GET /api/rate-library/export?categories=…&archived=…`, which streams back a
+`.xlsx` download — the same `Content-Disposition: attachment` pattern already
+used for the Word quote summary, so no client-side blob handling is needed.
+
+The export is layered the same way as the rest of the app:
+
+- `src/lib/xlsx/flatten.ts` — pure, DB-free functions that turn a Rate
+  Library record into human-readable rows (no ids, JSON blobs, or foreign
+  keys) — one function per category, each individually unit tested.
+- `src/lib/xlsx/export-rate-library.ts` — one `exportXRates()` per category
+  (fetch via the existing `listX` actions + flatten) and
+  `buildRateLibraryWorkbook()`, which combines only the selected categories
+  into one workbook, always in the same order as the Rate Library tabs
+  regardless of the order they were checked in.
+- `src/lib/xlsx/workbook.ts` — the exceljs formatting layer: bold sage
+  header row, frozen top row, autofilter, sensible column widths, wrapped
+  Notes column, numeric (not text) price/age cells, worksheet-name
+  sanitization (31-char Excel limit, illegal characters stripped).
+
+**Accommodation and Park child brackets** flatten into one row per
+combination rather than fixed columns, since each accommodation/park
+defines its own bracket set: a `Child` row carries that specific bracket's
+`Child Minimum Age` / `Child Maximum Age` alongside its price, so two
+properties with different brackets for the same age are never conflated —
+exactly the same "brackets are never global" principle as the Quote
+Builder (see above).
+
+**Currency**: every row keeps its original `Price` + `Currency` and adds a
+`USD Equivalent` computed via the same `toUsdCents()` used everywhere else
+in the app, using the exchange rate at the moment of export (never a stored
+rate from when a rate was entered). That rate is shown once, on a small
+"Export Info" worksheet (export date, `1 USD = X KES`, categories included),
+rather than repeating a banner row on every category tab. The export never
+writes to the database.
+
+Archived rates are excluded by default; when "Include archived rates" is
+checked, they're included and every sheet gains a `Status` (Active/Archived)
+column — otherwise the column is omitted entirely, since it would carry no
+information.
+
 ### Future margin / selling-price architecture
 
 Version 1 only ever calculates **cost**. The `Quote` model already has
@@ -308,16 +354,20 @@ A few judgment calls where the spec allowed for a sensible default:
 npm run test
 ```
 
-61 tests covering: currency conversion and formatting, every category's
+86 tests covering: currency conversion and formatting, every category's
 pricing rule (accommodation per-person and per-room, transport, train,
 transfer, activity, park entrance fee, flight, villa, misc), child age
 bracket matching/validation/overlap detection (including the same age
 mapping to different brackets for different suppliers), trip date /
 private-vehicle-day math, quote totals and price-per-person, Daily Totals
 (correct aggregation, updates on quantity/override/KES changes, sum equals
-Total Party with no double counting), and integration scenarios run
-against a real database: the two historical-snapshot scenarios (Rate
-Library price change, exchange rate change), accommodation bracket
-matching end-to-end, the missing-bracket error path, Park Entrance Fees
-(adults + children, KES, manual override, excluding one traveller), and a
-legacy quote (old child-category shape) rendering without error.
+Total Party with no double counting), the Rate Library Excel export
+(flattening each category including nested accommodation/park child
+brackets, USD/KES conversion, archived-rate inclusion/exclusion, worksheet
+selection and naming, and a real read-back of the generated `.xlsx` to
+prove it's a valid file), and integration scenarios run against a real
+database: the two historical-snapshot scenarios (Rate Library price
+change, exchange rate change), accommodation bracket matching end-to-end,
+the missing-bracket error path, Park Entrance Fees (adults + children,
+KES, manual override, excluding one traveller), and a legacy quote (old
+child-category shape) rendering without error.

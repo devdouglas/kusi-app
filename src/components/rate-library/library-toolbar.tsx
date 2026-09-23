@@ -1,7 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { Input } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import { ExportModal } from "@/components/rate-library/export-modal";
 
 export function LibraryToolbar({
   search,
@@ -20,6 +22,8 @@ export function LibraryToolbar({
   addLabel: string;
   searchPlaceholder?: string;
 }) {
+  const [exportOpen, setExportOpen] = useState(false);
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-3">
@@ -39,9 +43,15 @@ export function LibraryToolbar({
           Show archived
         </label>
       </div>
-      <Button variant="primary" onClick={onAdd}>
-        + {addLabel}
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="secondary" onClick={() => setExportOpen(true)}>
+          Export to Excel
+        </Button>
+        <Button variant="primary" onClick={onAdd}>
+          + {addLabel}
+        </Button>
+      </div>
+      <ExportModal open={exportOpen} onClose={() => setExportOpen(false)} />
     </div>
   );
 }
