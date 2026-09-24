@@ -15,8 +15,7 @@ services:
       PORT: "3000"
       DATABASE_URL: postgresql://${POSTGRES_USER:-kusi}:${POSTGRES_PASSWORD:-kusi}@db:5432/${POSTGRES_DB:-kusi}?schema=public
       RUN_SEED: ${RUN_SEED:-false}
-      BASIC_AUTH_USERNAME: ${BASIC_AUTH_USERNAME:-}
-      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required — generate with `openssl rand -base64 32`}
     depends_on:
       db:
         condition: service_healthy

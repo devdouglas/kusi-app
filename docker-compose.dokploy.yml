@@ -12,8 +12,7 @@ services:
       PORT: "3000"
       DATABASE_URL: ${DATABASE_URL}
       RUN_SEED: ${RUN_SEED:-false}
-      BASIC_AUTH_USERNAME: ${BASIC_AUTH_USERNAME:-}
-      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required — generate with `openssl rand -base64 32`}
     networks:
       - dokploy-network
 

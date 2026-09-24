@@ -29,6 +29,20 @@ model Settings {
 }
 
 // ---------------------------------------------------------------------------
+// Users (app login)
+// ---------------------------------------------------------------------------
+
+// A staff account that can sign in to the app. Passwords are never stored in
+// plain text — only a salted scrypt hash (src/lib/auth/password.ts).
+model User {
+  id           String   @id @default(cuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
 // Shared enums
 // ---------------------------------------------------------------------------
 

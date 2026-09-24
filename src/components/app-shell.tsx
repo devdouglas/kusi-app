@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import clsx from "clsx";
 import packageJson from "../../package.json";
+import { SignOutButton } from "@/components/auth/sign-out-button";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard" },
@@ -21,7 +22,7 @@ function isActive(pathname: string, href: string) {
   return pathname.startsWith(href);
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, username }: { children: ReactNode; username?: string | null }) {
   const pathname = usePathname();
 
   return (
@@ -41,7 +42,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               v{packageJson.version}
             </span>
           </Link>
-          <nav className="flex items-center gap-1">
+          <nav className="flex flex-1 items-center gap-1">
             {NAV_ITEMS.map((item) => {
               const active = isActive(pathname, item.href);
               return (
@@ -60,6 +61,15 @@ export function AppShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
+          {username && (
+            <div className="flex shrink-0 items-center gap-3">
+              <Link href="/account" className="text-[13px] font-medium text-foreground/70 hover:text-foreground hover:underline">
+                {username}
+              </Link>
+              <span className="text-border">·</span>
+              <SignOutButton />
+            </div>
+          )}
         </div>
       </header>
       <main className="flex-1">

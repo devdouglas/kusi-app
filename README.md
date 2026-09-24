@@ -14,6 +14,9 @@ costings day by day.
 - **docx** for generating the internal Word quote summary
 - **exceljs** for generating the Rate Library Excel export
 - **Vitest** for unit + integration tests
+- Sign-in is a small first-party login system — signed session cookies
+  (Node's built-in `crypto`, no auth library dependency) — see "User
+  accounts / login" below
 
 ## Agent / contributor notes (Prisma, Docker, Dokploy)
 
@@ -59,23 +62,47 @@ touching `Dockerfile` / deploy config.**
 | Build | **Dockerfile** at repo root, or **Compose** with `docker-compose.dokploy.yml` (joins `dokploy-network` for internal DB hostnames like `kusi-db-*`) |
 | Database | Managed **PostgreSQL 16**; `DATABASE_URL` = **internal** connection URL from Dokploy |
 | Domain | e.g. `app.kusisafaris.com` → container port **3000** (not 80) |
-| Env | `DATABASE_URL` (required), `NODE_ENV=production`, `HOSTNAME=0.0.0.0`, `PORT=3000`; `RUN_SEED=true` **once** for demo data then remove/disable; `BASIC_AUTH_USERNAME` + `BASIC_AUTH_PASSWORD` (optional) — see below |
+| Env | `DATABASE_URL` (required), `NODE_ENV=production`, `HOSTNAME=0.0.0.0`, `PORT=3000`, `SESSION_SECRET` (required — see below); `RUN_SEED=true` **once** for demo data then remove/disable |
 | Logs | Use **container/runtime** logs, not build logs — look for `Starting Next.js...` |
 
 Internal DB hostnames only resolve when the app container is on
 `dokploy-network` (Compose file above, or domain attached on Application
 deploy per Dokploy behavior).
 
-### Basic Auth (optional)
+### User accounts / login
 
-Set **both** `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` (in Dokploy's
-env vars for an Application deploy, or in `.env`/the shell environment for
-Compose — both compose files already pass them through) to gate the whole
-app behind a single shared username/password, prompted by the browser's
-native login dialog (HTTP Basic Auth, enforced in `src/middleware.ts`).
-Leave either unset and no prompt appears — local dev stays frictionless
-unless you opt in. `/api/health` is always excluded so the Docker
-healthcheck (which sends no credentials) keeps working.
+The whole app requires signing in — enforced in `src/proxy.ts`, which redirects
+any request without a valid session cookie to `/login` (`/api/health` stays
+open for the Docker healthcheck, which sends no cookies). There's no
+"disable auth" toggle: this is a login system, not an optional gate.
+
+- **`SESSION_SECRET`** signs the session cookie (`src/lib/auth/session.ts`,
+  HMAC-SHA256, no extra dependency) and is **required in production** — the
+  app throws on startup if it's missing when `NODE_ENV=production`. Generate
+  one with `openssl rand -base64 32` and set it in Dokploy's env vars (or
+  `.env`/the shell for Compose — both compose files already pass it
+  through). Local dev falls back to a built-in insecure value if unset, so
+  `npm run dev` works out of the box; sessions just won't survive a
+  restart.
+- **Passwords** are hashed with Node's built-in `scrypt` (`src/lib/auth/password.ts`)
+  — never stored or logged in plain text.
+- **The first account** (username `SarahV`) is created by the
+  `20260924102401_add_users` migration itself, not by `prisma/seed.ts` —
+  migrations only ever run once per database (Prisma tracks them in
+  `_prisma_migrations`), so this is guaranteed to seed exactly once and can
+  never overwrite a password changed later, even across repeated deploys.
+  The `RUN_SEED=true` demo-data seed script is unrelated and safe to re-run
+  as usual.
+- **Changing your own username/password** is self-service on the **Account**
+  page (linked from the top-right of the header once signed in), which
+  requires your current password to confirm any change
+  (`src/lib/actions/auth.ts` → `updateCredentials`).
+- This is deliberately a small, single-purpose login system (one shared
+  `User` table, no roles/permissions) — matched to what was asked for. The
+  schema (a unique `username` per row) supports adding more accounts later
+  without a redesign, but there's currently no UI for creating additional
+  users beyond the seeded one; that would be a follow-up if Kusi needs
+  multiple staff logins.
 
 ### Failed migration recovery (P3009)
 
@@ -104,12 +131,13 @@ Do **not** edit applied migration files in place on production without
 docker compose -f docker-compose.dev.yml up -d
 npm install
 cp .env.example .env
-npx prisma migrate deploy
+npx prisma migrate deploy   # also creates the first login account
 npm run seed                # optional: a couple of demo Rate Library entries
 npm run dev
 ```
 
-Open http://localhost:3000.
+Open http://localhost:3000 and sign in — see "User accounts / login" below
+for how the first account is created and how to change its password.
 
 ## Docker / Dokploy
 
@@ -404,7 +432,7 @@ A few judgment calls where the spec allowed for a sensible default:
 npm run test
 ```
 
-115 tests covering: currency conversion and formatting, every category's
+137 tests covering: currency conversion and formatting, every category's
 pricing rule (accommodation per-person and per-room, transport, train,
 transfer, activity, park entrance fee, flight, villa, misc, lodge
 activity — Per Person / Per Group / Fixed Price), child age bracket
@@ -428,4 +456,10 @@ child-category shape) rendering without error, and Lodge Activities
 end-to-end (zero/multiple activities per accommodation, each pricing
 basis, USD/KES, manual override, Daily Total / Total Party contribution,
 a frozen snapshot after the Rate Library price changes, and activities
-correctly scoped to their own accommodation).
+correctly scoped to their own accommodation), and the login system
+(password hashing round-trips and never stores plain text, session tokens
+verify/reject correctly including tampered payloads and bad signatures,
+and credential changes: wrong current password rejected, password and
+username changes both take effect and the old value stops working,
+username-uniqueness enforced, and the seeded first account exists with a
+properly-hashed password).
