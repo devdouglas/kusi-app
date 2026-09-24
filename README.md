@@ -59,12 +59,23 @@ touching `Dockerfile` / deploy config.**
 | Build | **Dockerfile** at repo root, or **Compose** with `docker-compose.dokploy.yml` (joins `dokploy-network` for internal DB hostnames like `kusi-db-*`) |
 | Database | Managed **PostgreSQL 16**; `DATABASE_URL` = **internal** connection URL from Dokploy |
 | Domain | e.g. `app.kusisafaris.com` → container port **3000** (not 80) |
-| Env | `DATABASE_URL` (required), `NODE_ENV=production`, `HOSTNAME=0.0.0.0`, `PORT=3000`; `RUN_SEED=true` **once** for demo data then remove/disable |
+| Env | `DATABASE_URL` (required), `NODE_ENV=production`, `HOSTNAME=0.0.0.0`, `PORT=3000`; `RUN_SEED=true` **once** for demo data then remove/disable; `BASIC_AUTH_USERNAME` + `BASIC_AUTH_PASSWORD` (optional) — see below |
 | Logs | Use **container/runtime** logs, not build logs — look for `Starting Next.js...` |
 
 Internal DB hostnames only resolve when the app container is on
 `dokploy-network` (Compose file above, or domain attached on Application
 deploy per Dokploy behavior).
+
+### Basic Auth (optional)
+
+Set **both** `BASIC_AUTH_USERNAME` and `BASIC_AUTH_PASSWORD` (in Dokploy's
+env vars for an Application deploy, or in `.env`/the shell environment for
+Compose — both compose files already pass them through) to gate the whole
+app behind a single shared username/password, prompted by the browser's
+native login dialog (HTTP Basic Auth, enforced in `src/middleware.ts`).
+Leave either unset and no prompt appears — local dev stays frictionless
+unless you opt in. `/api/health` is always excluded so the Docker
+healthcheck (which sends no credentials) keeps working.
 
 ### Failed migration recovery (P3009)
 

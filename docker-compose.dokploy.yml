@@ -12,6 +12,8 @@ services:
       PORT: "3000"
       DATABASE_URL: ${DATABASE_URL}
       RUN_SEED: ${RUN_SEED:-false}
+      BASIC_AUTH_USERNAME: ${BASIC_AUTH_USERNAME:-}
+      BASIC_AUTH_PASSWORD: ${BASIC_AUTH_PASSWORD:-}
     networks:
       - dokploy-network
 
