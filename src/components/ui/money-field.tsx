@@ -34,6 +34,7 @@ export function MoneyField({
             placeholder={placeholder ?? "0.00"}
             disabled={disabled}
             onChange={(e) => onAmountChange(e.target.value === "" ? 0 : Number(e.target.value))}
+            onFocus={(e) => e.target.select()}
           />
         </div>
         <div className="inline-flex overflow-hidden rounded-xl border border-border">
