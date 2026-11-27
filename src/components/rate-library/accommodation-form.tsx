@@ -6,6 +6,7 @@ import { validateBracketSet } from "@/lib/calc/child-brackets";
 import { centsToAmount, type Currency } from "@/lib/money";
 import { SEASON_LABELS, MEAL_PLAN_LABELS, type Season, type MealPlan, type PricingBasis } from "@/types/line-items";
 import { Button } from "@/components/ui/button";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { LodgeActivitiesSection, type AccommodationActivityRecord } from "@/components/rate-library/lodge-activities-section";
@@ -238,263 +239,292 @@ export function AccommodationForm({
 
   return (
     <Modal open title={initial ? "Edit accommodation" : "Add accommodation"} onClose={onClose} width="max-w-[95vw]">
-      <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="name">Accommodation name</Label>
-            <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div>
-            <Label htmlFor="location">Town / location</Label>
-            <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} required />
-          </div>
-          <div>
-            <Label htmlFor="currency">Currency</Label>
-            <Select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
-              <option value="USD">USD</option>
-              <option value="KES">KES</option>
-            </Select>
-          </div>
-          <div>
-            <Label htmlFor="basis">Pricing basis</Label>
-            <Select id="basis" value={pricingBasis} onChange={(e) => setPricingBasis(e.target.value as PricingBasis)}>
-              <option value="PER_PERSON">Per Person</option>
-              <option value="PER_ROOM">Per Room</option>
-            </Select>
-          </div>
-        </div>
-        <div>
-          <Label htmlFor="notes">Notes</Label>
-          <Textarea id="notes" value={notes ?? ""} onChange={(e) => setNotes(e.target.value)} />
-        </div>
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <Label>Room types</Label>
-            <Button type="button" size="sm" variant="secondary" onClick={addRoomType}>
-              + Add room type
-            </Button>
-          </div>
-          <div className="space-y-2">
-            {roomTypes.map((rt) => (
-              <div key={rt.key} className="flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <Input
-                    value={rt.name}
-                    onChange={(e) => renameRoomType(rt.key, e.target.value)}
-                    placeholder="e.g. Family Safari Tent with Two Bedrooms and Private Veranda"
-                    maxLength={300}
-                    title={rt.name}
-                  />
-                </div>
-                <Button type="button" size="sm" variant="ghost" onClick={() => removeRoomType(rt.key)}>
-                  Remove
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {pricingBasis === "PER_PERSON" && (
-          <div>
-            <div className="mb-2 flex items-center justify-between">
-              <Label>Child age brackets</Label>
-              <Button type="button" size="sm" variant="secondary" onClick={addBracket}>
-                + Add age bracket
-              </Button>
+      <div className="space-y-6">
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="name">Accommodation name</Label>
+              <Input id="name" value={name} onChange={(e) => setName(e.target.value)} required />
             </div>
-            {brackets.length === 0 ? (
+            <div>
+              <Label htmlFor="location">Town / location</Label>
+              <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} required />
+            </div>
+            <div>
+              <Label htmlFor="currency">Currency</Label>
+              <Select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value as Currency)}>
+                <option value="USD">USD</option>
+                <option value="KES">KES</option>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="basis">Pricing basis</Label>
+              <Select id="basis" value={pricingBasis} onChange={(e) => setPricingBasis(e.target.value as PricingBasis)}>
+                <option value="PER_PERSON">Per Person</option>
+                <option value="PER_ROOM">Per Room</option>
+              </Select>
+            </div>
+          </div>
+          <div>
+            <Label htmlFor="notes">Notes</Label>
+            <Textarea id="notes" value={notes ?? ""} onChange={(e) => setNotes(e.target.value)} />
+          </div>
+
+          <CollapsibleSection
+            title="Room types"
+            summary={`${roomTypes.length} room type${roomTypes.length === 1 ? "" : "s"}`}
+            headerActions={
+              <Button type="button" size="sm" variant="secondary" onClick={addRoomType}>
+                + Add room type
+              </Button>
+            }
+          >
+            <div className="space-y-2">
+              {roomTypes.map((rt) => (
+                <div key={rt.key} className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <Input
+                      value={rt.name}
+                      onChange={(e) => renameRoomType(rt.key, e.target.value)}
+                      placeholder="e.g. Family Safari Tent with Two Bedrooms and Private Veranda"
+                      maxLength={300}
+                      title={rt.name}
+                    />
+                  </div>
+                  <Button type="button" size="sm" variant="ghost" onClick={() => removeRoomType(rt.key)}>
+                    Remove
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CollapsibleSection>
+
+          {pricingBasis === "PER_PERSON" ? (
+            <CollapsibleSection
+              title="Child age brackets"
+              summary={`${brackets.length} bracket${brackets.length === 1 ? "" : "s"}`}
+              headerActions={
+                <Button type="button" size="sm" variant="secondary" onClick={addBracket}>
+                  + Add age bracket
+                </Button>
+              }
+            >
+              {brackets.length === 0 ? (
+                <p className="text-[13px] text-muted">
+                  No child age brackets yet — this accommodation will only price adults until you add one.
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  {brackets.map((b) => (
+                    <div key={b.key} className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        max={15}
+                        placeholder="Min age"
+                        value={b.minAge}
+                        onChange={(e) => updateBracket(b.key, { minAge: e.target.value })}
+                        className="w-24"
+                      />
+                      <span className="text-muted">–</span>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={15}
+                        placeholder="Max age"
+                        value={b.maxAge}
+                        onChange={(e) => updateBracket(b.key, { maxAge: e.target.value })}
+                        className="w-24"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <Input
+                          placeholder="Display label (optional)"
+                          value={b.label}
+                          onChange={(e) => updateBracket(b.key, { label: e.target.value })}
+                        />
+                      </div>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => removeBracket(b.key)}>
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CollapsibleSection>
+          ) : (
+            <p className="text-[13px] text-muted">
+              Child age brackets aren&apos;t used with Per Room pricing — switch the pricing basis above to Per Person
+              to price children separately from adults.
+            </p>
+          )}
+
+          <CollapsibleSection
+            title={`Rates (${currency})`}
+            summary={`${rates.length} row${rates.length === 1 ? "" : "s"}`}
+            headerActions={
+              <Button type="button" size="sm" variant="secondary" onClick={addRateRow} disabled={roomTypes.length === 0}>
+                + Add rate row
+              </Button>
+            }
+          >
+            {rates.length === 0 ? (
               <p className="text-[13px] text-muted">
-                No child age brackets yet — this accommodation will only price adults until you add one.
+                No rates yet — add a row for each room type / season / meal plan combination you have a price for.
               </p>
             ) : (
-              <div className="space-y-2">
-                {brackets.map((b) => (
-                  <div key={b.key} className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={15}
-                      placeholder="Min age"
-                      value={b.minAge}
-                      onChange={(e) => updateBracket(b.key, { minAge: e.target.value })}
-                      className="w-24"
-                    />
-                    <span className="text-muted">–</span>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={15}
-                      placeholder="Max age"
-                      value={b.maxAge}
-                      onChange={(e) => updateBracket(b.key, { maxAge: e.target.value })}
-                      className="w-24"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <Input
-                        placeholder="Display label (optional)"
-                        value={b.label}
-                        onChange={(e) => updateBracket(b.key, { label: e.target.value })}
-                      />
-                    </div>
-                    <Button type="button" size="sm" variant="ghost" onClick={() => removeBracket(b.key)}>
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        <div>
-          <div className="mb-2 flex items-center justify-between">
-            <Label>Rates ({currency})</Label>
-            <Button type="button" size="sm" variant="secondary" onClick={addRateRow} disabled={roomTypes.length === 0}>
-              + Add rate row
-            </Button>
-          </div>
-          {rates.length === 0 ? (
-            <p className="text-[13px] text-muted">
-              No rates yet — add a row for each room type / season / meal plan combination you have a price for.
-            </p>
-          ) : (
-            <div className="overflow-x-auto rounded-xl border border-border">
-              <table className="w-full text-[13px]">
-                <thead>
-                  <tr className="border-b border-border bg-sage-50 text-left text-[11px] font-medium uppercase tracking-wide text-muted">
-                    <th className="px-3 py-2">Room</th>
-                    <th className="px-3 py-2">Season</th>
-                    <th className="px-3 py-2">Meal Plan</th>
-                    {pricingBasis === "PER_PERSON" ? (
-                      <>
-                        <th className="px-3 py-2">Adult Sharing</th>
-                        {brackets.map((b) => (
-                          <th key={b.key} className="px-3 py-2">
-                            Child {b.label || `${b.minAge || "?"}–${b.maxAge || "?"}`}
-                          </th>
-                        ))}
-                        <th className="px-3 py-2">Single</th>
-                      </>
-                    ) : (
-                      <>
-                        <th className="px-3 py-2">Standard Room</th>
-                        <th className="px-3 py-2">Single Room</th>
-                      </>
-                    )}
-                    <th className="px-3 py-2"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {rates.map((row) => (
-                    <tr key={row.key}>
-                      <td className="px-3 py-2">
-                        <Select
-                          value={row.roomTypeKey}
-                          onChange={(e) => updateRateRow(row.key, { roomTypeKey: e.target.value })}
-                          className="min-w-48 max-w-72 py-1.5"
-                          title={roomTypes.find((rt) => rt.key === row.roomTypeKey)?.name}
-                        >
-                          {roomTypes.map((rt) => (
-                            <option key={rt.key} value={rt.key}>
-                              {rt.name || "(unnamed)"}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <Select
-                          value={row.season}
-                          onChange={(e) => updateRateRow(row.key, { season: e.target.value as Season })}
-                          className="min-w-28 py-1.5"
-                        >
-                          {SEASONS.map((s) => (
-                            <option key={s} value={s}>
-                              {SEASON_LABELS[s]}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
-                      <td className="px-3 py-2">
-                        <Select
-                          value={row.mealPlan}
-                          onChange={(e) => updateRateRow(row.key, { mealPlan: e.target.value as MealPlan })}
-                          className="min-w-36 py-1.5"
-                        >
-                          {MEAL_PLANS.map((m) => (
-                            <option key={m} value={m}>
-                              {MEAL_PLAN_LABELS[m]}
-                            </option>
-                          ))}
-                        </Select>
-                      </td>
+              <div className="overflow-x-auto rounded-xl border border-border">
+                <table className="w-full text-[13px]">
+                  <thead>
+                    <tr className="border-b border-border bg-sage-50 text-left text-[11px] font-medium uppercase tracking-wide text-muted">
+                      <th className="px-3 py-2">Room</th>
+                      <th className="px-3 py-2">Season</th>
+                      <th className="px-3 py-2">Meal Plan</th>
                       {pricingBasis === "PER_PERSON" ? (
                         <>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={row.adultSharing}
-                              onChange={(e) => updateRateRow(row.key, { adultSharing: e.target.value })}
-                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                            />
-                          </td>
+                          <th className="px-3 py-2">Adult Sharing</th>
                           {brackets.map((b) => (
-                            <td key={b.key} className="px-3 py-2">
-                              <Input
-                                type="number"
-                                min={0}
-                                value={row.childPrices[b.key] ?? ""}
-                                onChange={(e) => updateRateChildPrice(row.key, b.key, e.target.value)}
-                                className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                              />
-                            </td>
+                            <th key={b.key} className="px-3 py-2">
+                              Child {b.label || `${b.minAge || "?"}–${b.maxAge || "?"}`}
+                            </th>
                           ))}
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={row.single}
-                              onChange={(e) => updateRateRow(row.key, { single: e.target.value })}
-                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                            />
-                          </td>
+                          <th className="px-3 py-2">Single</th>
                         </>
                       ) : (
                         <>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={row.standardRoom}
-                              onChange={(e) => updateRateRow(row.key, { standardRoom: e.target.value })}
-                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                            />
-                          </td>
-                          <td className="px-3 py-2">
-                            <Input
-                              type="number"
-                              min={0}
-                              value={row.singleRoom}
-                              onChange={(e) => updateRateRow(row.key, { singleRoom: e.target.value })}
-                              className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                            />
-                          </td>
+                          <th className="px-3 py-2">Standard Room</th>
+                          <th className="px-3 py-2">Single Room</th>
                         </>
                       )}
-                      <td className="px-3 py-2">
-                        <Button type="button" size="sm" variant="ghost" onClick={() => removeRateRow(row.key)}>
-                          Remove
-                        </Button>
-                      </td>
+                      <th className="px-3 py-2"></th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rates.map((row) => (
+                      <tr key={row.key}>
+                        <td className="px-3 py-2">
+                          <Select
+                            value={row.roomTypeKey}
+                            onChange={(e) => updateRateRow(row.key, { roomTypeKey: e.target.value })}
+                            className="min-w-48 max-w-72 py-1.5"
+                            title={roomTypes.find((rt) => rt.key === row.roomTypeKey)?.name}
+                          >
+                            {roomTypes.map((rt) => (
+                              <option key={rt.key} value={rt.key}>
+                                {rt.name || "(unnamed)"}
+                              </option>
+                            ))}
+                          </Select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <Select
+                            value={row.season}
+                            onChange={(e) => updateRateRow(row.key, { season: e.target.value as Season })}
+                            className="min-w-28 py-1.5"
+                          >
+                            {SEASONS.map((s) => (
+                              <option key={s} value={s}>
+                                {SEASON_LABELS[s]}
+                              </option>
+                            ))}
+                          </Select>
+                        </td>
+                        <td className="px-3 py-2">
+                          <Select
+                            value={row.mealPlan}
+                            onChange={(e) => updateRateRow(row.key, { mealPlan: e.target.value as MealPlan })}
+                            className="min-w-36 py-1.5"
+                          >
+                            {MEAL_PLANS.map((m) => (
+                              <option key={m} value={m}>
+                                {MEAL_PLAN_LABELS[m]}
+                              </option>
+                            ))}
+                          </Select>
+                        </td>
+                        {pricingBasis === "PER_PERSON" ? (
+                          <>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.adultSharing}
+                                onChange={(e) => updateRateRow(row.key, { adultSharing: e.target.value })}
+                                className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </td>
+                            {brackets.map((b) => (
+                              <td key={b.key} className="px-3 py-2">
+                                <Input
+                                  type="number"
+                                  min={0}
+                                  value={row.childPrices[b.key] ?? ""}
+                                  onChange={(e) => updateRateChildPrice(row.key, b.key, e.target.value)}
+                                  className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                />
+                              </td>
+                            ))}
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.single}
+                                onChange={(e) => updateRateRow(row.key, { single: e.target.value })}
+                                className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.standardRoom}
+                                onChange={(e) => updateRateRow(row.key, { standardRoom: e.target.value })}
+                                className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </td>
+                            <td className="px-3 py-2">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={row.singleRoom}
+                                onChange={(e) => updateRateRow(row.key, { singleRoom: e.target.value })}
+                                className="w-24 py-1.5 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                              />
+                            </td>
+                          </>
+                        )}
+                        <td className="px-3 py-2">
+                          <Button type="button" size="sm" variant="ghost" onClick={() => removeRateRow(row.key)}>
+                            Remove
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CollapsibleSection>
 
+          {error && <p className="text-[13px] text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2 border-t border-border pt-4">
+            <Button type="button" variant="secondary" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="primary" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </div>
+        </form>
+
+        {/* Deliberately outside the <form> above: Lodge Activities save via
+            their own server actions, not this form's Save button, and — since
+            Modal portals content to document.body — nesting a second <form>
+            inside this one would have its submit events bubble through the
+            React tree to this form's onSubmit too, saving-and-closing the
+            whole accommodation modal every time an activity was added. */}
         <div className="border-t border-border pt-6">
           {initial ? (
             <LodgeActivitiesSection
@@ -510,17 +540,7 @@ export function AccommodationForm({
             </div>
           )}
         </div>
-
-        {error && <p className="text-[13px] text-red-600">{error}</p>}
-        <div className="flex justify-end gap-2 border-t border-border pt-4">
-          <Button type="button" variant="secondary" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" variant="primary" disabled={saving}>
-            {saving ? "Saving…" : "Save"}
-          </Button>
-        </div>
-      </form>
+      </div>
     </Modal>
   );
 }

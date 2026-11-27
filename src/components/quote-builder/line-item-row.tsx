@@ -57,7 +57,11 @@ function detailLines(data: LineItemData): string[] {
     case "TAXI_TRANSFER":
       return [`${data.vehicles} vehicle${data.vehicles !== 1 ? "s" : ""}`];
     case "ACTIVITY":
-      return [`${data.participants} participant${data.participants !== 1 ? "s" : ""}`];
+      return [
+        data.pricingBasis === "PER_GROUP"
+          ? `${data.participants} group${data.participants !== 1 ? "s" : ""}`
+          : `${data.participants} participant${data.participants !== 1 ? "s" : ""}`,
+      ];
     case "PARK_ENTRANCE_FEE": {
       const lines = data.adults > 0 ? [`${data.adults} adult${data.adults !== 1 ? "s" : ""}`] : [];
       lines.push(...bracketLines(data.childBrackets));

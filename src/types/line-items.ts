@@ -6,6 +6,7 @@ export type PricingBasis = "PER_PERSON" | "PER_ROOM";
 export type VehicleType = "VAN" | "JEEP_5PAX" | "JEEP_8PAX";
 export type TrainClass = "FIRST" | "SECOND";
 export type LodgeActivityPricingBasis = "PER_PERSON" | "PER_GROUP" | "FIXED_PRICE";
+export type ActivityPricingBasis = "PER_PERSON" | "PER_GROUP";
 
 export const SEASON_LABELS: Record<Season, string> = {
   LOW: "Low Season",
@@ -25,6 +26,11 @@ export const LODGE_ACTIVITY_PRICING_BASIS_LABELS: Record<LodgeActivityPricingBas
   PER_PERSON: "Per Person",
   PER_GROUP: "Per Group",
   FIXED_PRICE: "Fixed Price",
+};
+
+export const ACTIVITY_PRICING_BASIS_LABELS: Record<ActivityPricingBasis, string> = {
+  PER_PERSON: "Per Person",
+  PER_GROUP: "Per Group",
 };
 
 export const VEHICLE_TYPE_LABELS: Record<VehicleType, string> = {
@@ -147,6 +153,9 @@ export interface ActivityLineData {
   activityId: string | null;
   activityName: string;
   location: string;
+  /** Pricing basis at the time of booking — undefined on quotes saved before this existed, which all meant PER_PERSON. */
+  pricingBasis?: ActivityPricingBasis;
+  /** Number of participants (PER_PERSON) or number of group bookings (PER_GROUP). */
   participants: number;
   priceCentsPerParticipant: number;
   currency: Currency;

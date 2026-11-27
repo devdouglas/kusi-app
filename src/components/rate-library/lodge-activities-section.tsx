@@ -12,6 +12,7 @@ import { centsToAmount, formatMoney, type Currency } from "@/lib/money";
 import { LODGE_ACTIVITY_PRICING_BASIS_LABELS, type LodgeActivityPricingBasis } from "@/types/line-items";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CollapsibleSection } from "@/components/ui/collapsible-section";
 import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { MoneyField } from "@/components/ui/money-field";
 import { Modal } from "@/components/ui/modal";
@@ -56,66 +57,68 @@ export function LodgeActivitiesSection({
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <div>
-          <Label>Lodge Activities</Label>
-          <p className="text-[12px] text-muted">Activities offered only to guests staying at this accommodation.</p>
-        </div>
-        <Button type="button" size="sm" variant="secondary" onClick={() => setEditing("new")}>
-          + Add Activity
-        </Button>
-      </div>
+      <CollapsibleSection
+        title="Lodge Activities"
+        summary={`${activities.length} activit${activities.length === 1 ? "y" : "ies"}`}
+        headerActions={
+          <Button type="button" size="sm" variant="secondary" onClick={() => setEditing("new")}>
+            + Add Activity
+          </Button>
+        }
+      >
+        <p className="mb-2 text-[12px] text-muted">Activities offered only to guests staying at this accommodation.</p>
 
-      {activities.length === 0 ? (
-        <p className="text-[13px] text-muted">No Lodge Activities yet.</p>
-      ) : (
-        <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-border bg-sage-50 text-left text-[11px] font-medium uppercase tracking-wide text-muted">
-                <th className="px-3 py-2">Activity</th>
-                <th className="px-3 py-2">Pricing Basis</th>
-                <th className="px-3 py-2">Price</th>
-                <th className="px-3 py-2">Notes</th>
-                <th className="px-3 py-2"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {activities.map((a) => (
-                <tr key={a.id} className={a.archived ? "opacity-60" : undefined}>
-                  <td className="px-3 py-2 font-medium text-foreground">
-                    <span className="inline-flex items-center gap-2">
-                      {a.name}
-                      {a.archived && <Badge tone="neutral">Archived</Badge>}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-muted">{LODGE_ACTIVITY_PRICING_BASIS_LABELS[a.pricingBasis]}</td>
-                  <td className="px-3 py-2 text-muted">{formatMoney(a.amountCents, a.currency)}</td>
-                  <td className="px-3 py-2 text-muted">{a.notes || "—"}</td>
-                  <td className="px-3 py-2">
-                    <RowActions
-                      archived={a.archived}
-                      onEdit={() => setEditing(a)}
-                      onDuplicate={async () => {
-                        const copy = await duplicateAccommodationActivity(a.id);
-                        onChange([...activities, copy]);
-                      }}
-                      onToggleArchive={async () => {
-                        await archiveAccommodationActivity(a.id, !a.archived);
-                        onChange(activities.map((row) => (row.id === a.id ? { ...row, archived: !row.archived } : row)));
-                      }}
-                      onDelete={async () => {
-                        await deleteAccommodationActivity(a.id);
-                        onChange(activities.filter((row) => row.id !== a.id));
-                      }}
-                    />
-                  </td>
+        {activities.length === 0 ? (
+          <p className="text-[13px] text-muted">No Lodge Activities yet.</p>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b border-border bg-sage-50 text-left text-[11px] font-medium uppercase tracking-wide text-muted">
+                  <th className="px-3 py-2">Activity</th>
+                  <th className="px-3 py-2">Pricing Basis</th>
+                  <th className="px-3 py-2">Price</th>
+                  <th className="px-3 py-2">Notes</th>
+                  <th className="px-3 py-2"></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody className="divide-y divide-border">
+                {activities.map((a) => (
+                  <tr key={a.id} className={a.archived ? "opacity-60" : undefined}>
+                    <td className="px-3 py-2 font-medium text-foreground">
+                      <span className="inline-flex items-center gap-2">
+                        {a.name}
+                        {a.archived && <Badge tone="neutral">Archived</Badge>}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-muted">{LODGE_ACTIVITY_PRICING_BASIS_LABELS[a.pricingBasis]}</td>
+                    <td className="px-3 py-2 text-muted">{formatMoney(a.amountCents, a.currency)}</td>
+                    <td className="px-3 py-2 text-muted">{a.notes || "—"}</td>
+                    <td className="px-3 py-2">
+                      <RowActions
+                        archived={a.archived}
+                        onEdit={() => setEditing(a)}
+                        onDuplicate={async () => {
+                          const copy = await duplicateAccommodationActivity(a.id);
+                          onChange([...activities, copy]);
+                        }}
+                        onToggleArchive={async () => {
+                          await archiveAccommodationActivity(a.id, !a.archived);
+                          onChange(activities.map((row) => (row.id === a.id ? { ...row, archived: !row.archived } : row)));
+                        }}
+                        onDelete={async () => {
+                          await deleteAccommodationActivity(a.id);
+                          onChange(activities.filter((row) => row.id !== a.id));
+                        }}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CollapsibleSection>
 
       {editing && (
         <LodgeActivityFormModal

@@ -4,6 +4,8 @@ import { MIN_CHILD_AGE, MAX_CHILD_AGE } from "@/lib/calc/child-brackets";
 const currency = z.enum(["USD", "KES"]);
 const nonNegative = z.number().min(0, "Price cannot be negative");
 const childAgeNum = z.number().int().min(MIN_CHILD_AGE, `Ages cannot be below ${MIN_CHILD_AGE}`).max(MAX_CHILD_AGE, `Ages cannot be above ${MAX_CHILD_AGE}`);
+/** Park child age brackets have no upper age cap (unlike Accommodation's childAgeNum) — parks may define older "child" rates. */
+const parkChildAgeNum = z.number().int().min(0, "Ages cannot be negative");
 
 export const roomTypeInput = z.object({
   id: z.string().optional(), // present when editing an existing room type
@@ -85,6 +87,7 @@ export const activityRateInput = z.object({
   name: z.string().trim().min(1, "Activity name is required"),
   location: z.string().trim().min(1, "Location is required"),
   price: nonNegative,
+  pricingBasis: z.enum(["PER_PERSON", "PER_GROUP"]),
   currency,
   notes: z.string().trim().optional().nullable(),
 });
@@ -94,8 +97,8 @@ export type ActivityRateInput = z.infer<typeof activityRateInput>;
 export const parkChildBracketInput = z
   .object({
     id: z.string().optional(),
-    minAge: childAgeNum,
-    maxAge: childAgeNum,
+    minAge: parkChildAgeNum,
+    maxAge: parkChildAgeNum,
     price: nonNegative,
     label: z.string().trim().optional().nullable(),
   })

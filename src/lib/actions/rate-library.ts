@@ -651,6 +651,7 @@ export async function createActivityRate(raw: ActivityRateInput) {
       name: input.name,
       location: input.location,
       priceCents: amountToCents(input.price),
+      pricingBasis: input.pricingBasis,
       currency: input.currency,
       notes: input.notes || null,
     },
@@ -667,6 +668,7 @@ export async function updateActivityRate(id: string, raw: ActivityRateInput) {
       name: input.name,
       location: input.location,
       priceCents: amountToCents(input.price),
+      pricingBasis: input.pricingBasis,
       currency: input.currency,
       notes: input.notes || null,
     },
@@ -682,6 +684,7 @@ export async function duplicateActivityRate(id: string) {
       name: `${source.name} (Copy)`,
       location: source.location,
       priceCents: source.priceCents,
+      pricingBasis: source.pricingBasis,
       currency: source.currency,
       notes: source.notes,
     },
@@ -794,7 +797,7 @@ export async function getPark(id: string) {
 }
 
 async function writeParkChildBrackets(parkId: string, input: ParkInput) {
-  const validationError = validateBracketSet(input.childBrackets);
+  const validationError = validateBracketSet(input.childBrackets, null);
   if (validationError) throw new Error(validationError);
 
   // Same "replace the whole set" approach as the accommodation rate grid —
@@ -817,7 +820,7 @@ async function writeParkChildBrackets(parkId: string, input: ParkInput) {
 
 export async function createPark(raw: ParkInput) {
   const input = parkInput.parse(raw);
-  const validationError = validateBracketSet(input.childBrackets);
+  const validationError = validateBracketSet(input.childBrackets, null);
   if (validationError) throw new Error(validationError);
 
   const park = await prisma.park.create({
