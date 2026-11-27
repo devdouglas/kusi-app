@@ -61,7 +61,7 @@ beforeAll(async () => {
   const transfer = await createTransferRate({ route: "Airport → Hotel", price: 40, currency: "USD" });
   createdTransferIds.push(transfer.id);
 
-  const activity = await createActivityRate({ name: "Game Drive", location: "Samburu", price: 60, currency: "USD" });
+  const activity = await createActivityRate({ name: "Game Drive", location: "Samburu", price: 60, pricingBasis: "PER_PERSON", currency: "USD" });
   createdActivityIds.push(activity.id);
 
   const park = await createPark({

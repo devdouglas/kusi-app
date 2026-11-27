@@ -48,7 +48,12 @@ export function lineItemDescription(li: DerivedLineItem): string[] {
     case "TAXI_TRANSFER":
       return [li.description, `${d.vehicles} vehicle${d.vehicles !== 1 ? "s" : ""}`];
     case "ACTIVITY":
-      return [li.description, `${d.participants} participant${d.participants !== 1 ? "s" : ""}`];
+      return [
+        li.description,
+        d.pricingBasis === "PER_GROUP"
+          ? `${d.participants} group${d.participants !== 1 ? "s" : ""}`
+          : `${d.participants} participant${d.participants !== 1 ? "s" : ""}`,
+      ];
     case "PARK_ENTRANCE_FEE": {
       const lines = [li.description];
       if (d.adults > 0) lines.push(`${d.adults} adult${d.adults !== 1 ? "s" : ""} × ${formatMoney(d.adultFeeCents, d.currency)}`);

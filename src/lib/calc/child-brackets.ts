@@ -65,13 +65,26 @@ export function matchChildrenToBrackets<T extends ChildAgeBracket>(
   return { matched, unmatchedAges };
 }
 
-/** Range validity for a single bracket: 0 <= minAge <= maxAge <= 15. */
-export function validateAgeBracketRange(minAge: number, maxAge: number): string | null {
+/** Inclusive age bounds to enforce on a bracket's range, or `null` to allow any non-negative range. */
+export type AgeBracketBounds = { min: number; max: number } | null;
+
+export const DEFAULT_AGE_BRACKET_BOUNDS: AgeBracketBounds = { min: MIN_CHILD_AGE, max: MAX_CHILD_AGE };
+
+/** Range validity for a single bracket: whole numbers, minAge <= maxAge, and (unless `bounds` is null) within `bounds`. */
+export function validateAgeBracketRange(
+  minAge: number,
+  maxAge: number,
+  bounds: AgeBracketBounds = DEFAULT_AGE_BRACKET_BOUNDS
+): string | null {
   if (!Number.isInteger(minAge) || !Number.isInteger(maxAge)) {
     return "Ages must be whole numbers.";
   }
-  if (minAge < MIN_CHILD_AGE) return `Minimum age cannot be below ${MIN_CHILD_AGE}.`;
-  if (maxAge > MAX_CHILD_AGE) return `Maximum age cannot be above ${MAX_CHILD_AGE}.`;
+  if (bounds) {
+    if (minAge < bounds.min) return `Minimum age cannot be below ${bounds.min}.`;
+    if (maxAge > bounds.max) return `Maximum age cannot be above ${bounds.max}.`;
+  } else if (minAge < 0) {
+    return "Minimum age cannot be negative.";
+  }
   if (minAge > maxAge) return "Minimum age cannot exceed maximum age.";
   return null;
 }
@@ -97,9 +110,12 @@ export function findOverlappingBracketPairs(
  * 5–10). Returns a friendly message describing the first problem found, or
  * null if the set is valid.
  */
-export function validateBracketSet(brackets: { minAge: number; maxAge: number }[]): string | null {
+export function validateBracketSet(
+  brackets: { minAge: number; maxAge: number }[],
+  bounds: AgeBracketBounds = DEFAULT_AGE_BRACKET_BOUNDS
+): string | null {
   for (const b of brackets) {
-    const err = validateAgeBracketRange(b.minAge, b.maxAge);
+    const err = validateAgeBracketRange(b.minAge, b.maxAge, bounds);
     if (err) return err;
   }
   const overlaps = findOverlappingBracketPairs(brackets);

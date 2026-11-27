@@ -5,12 +5,15 @@ import { addActivityLineItem, addActivityManualLineItem, updateActivityLineItem,
 import { listActivityRates } from "@/lib/actions/rate-library";
 import { computeActivityTotal } from "@/lib/calc/simple";
 import { formatMoney, amountToCents, type Currency } from "@/lib/money";
-import type { ActivityLineData } from "@/types/line-items";
+import type { ActivityLineData, ActivityPricingBasis } from "@/types/line-items";
+import { ACTIVITY_PRICING_BASIS_LABELS } from "@/types/line-items";
 import { Button } from "@/components/ui/button";
-import { Input, Label } from "@/components/ui/field";
+import { Input, Label, Select } from "@/components/ui/field";
 import { Stepper } from "@/components/ui/stepper";
 import { MoneyField } from "@/components/ui/money-field";
 import { SearchableSelect, type SearchableSelectOption } from "@/components/ui/searchable-select";
+
+const PRICING_BASES: ActivityPricingBasis[] = ["PER_PERSON", "PER_GROUP"];
 
 export function ActivityItemForm({
   dayId,
@@ -32,9 +35,12 @@ export function ActivityItemForm({
   const [name, setName] = useState(initial?.activityName ?? "");
   const [location, setLocation] = useState(initial?.location ?? "");
   const [libraryPrice, setLibraryPrice] = useState({ cents: initial?.priceCentsPerParticipant ?? 0, currency: (initial?.currency ?? "USD") as Currency });
+  const [libraryPricingBasis, setLibraryPricingBasis] = useState<ActivityPricingBasis>(initial?.pricingBasis ?? "PER_PERSON");
   const [manualAmount, setManualAmount] = useState(!initial?.activityId && initial ? initial.priceCentsPerParticipant / 100 : 0);
   const [manualCurrency, setManualCurrency] = useState<Currency>(initial?.currency ?? "USD");
+  const [manualPricingBasis, setManualPricingBasis] = useState<ActivityPricingBasis>(initial?.pricingBasis ?? "PER_PERSON");
   const [participants, setParticipants] = useState(initial?.participants ?? quote.totalPax);
+  const pricingBasis = mode === "manual" ? manualPricingBasis : libraryPricingBasis;
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -57,6 +63,8 @@ export function ActivityItemForm({
     setName(rate.name);
     setLocation(rate.location);
     setLibraryPrice({ cents: rate.priceCents, currency: rate.currency });
+    setLibraryPricingBasis(rate.pricingBasis);
+    setParticipants(rate.pricingBasis === "PER_PERSON" ? quote.totalPax : 1);
   }
 
   const preview =
@@ -77,7 +85,7 @@ export function ActivityItemForm({
         else await addActivityLineItem(payload);
       } else if (mode === "manual") {
         if (!name.trim()) throw new Error("Activity name is required.");
-        const payload = { dayId, name, location, price: manualAmount, currency: manualCurrency, participants };
+        const payload = { dayId, name, location, price: manualAmount, pricingBasis: manualPricingBasis, currency: manualCurrency, participants };
         if (lineItemId) await updateActivityManualLineItem(lineItemId, payload);
         else await addActivityManualLineItem(payload);
       } else {
@@ -123,7 +131,25 @@ export function ActivityItemForm({
             <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} />
           </div>
           <div>
-            <Label>Price per participant</Label>
+            <Label htmlFor="manualPricingBasis">Pricing basis</Label>
+            <Select
+              id="manualPricingBasis"
+              value={manualPricingBasis}
+              onChange={(e) => {
+                const basis = e.target.value as ActivityPricingBasis;
+                setManualPricingBasis(basis);
+                setParticipants(basis === "PER_PERSON" ? quote.totalPax : 1);
+              }}
+            >
+              {PRICING_BASES.map((b) => (
+                <option key={b} value={b}>
+                  {ACTIVITY_PRICING_BASIS_LABELS[b]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <div>
+            <Label>{manualPricingBasis === "PER_PERSON" ? "Price per participant" : "Price per group"}</Label>
             <MoneyField
               amount={manualAmount}
               currency={manualCurrency}
@@ -137,7 +163,7 @@ export function ActivityItemForm({
 
       {mode !== "pick" && (
         <div>
-          <Label>Number of participants</Label>
+          <Label>{pricingBasis === "PER_PERSON" ? "Number of participants" : "Number of groups"}</Label>
           <Stepper value={participants} onChange={setParticipants} min={1} />
         </div>
       )}

@@ -78,6 +78,28 @@ describe("bracket range validation", () => {
   });
 });
 
+describe("bracket range validation with bounds disabled (Park Entrance Fees)", () => {
+  it("accepts a maximum age above 15 when bounds is null", () => {
+    expect(validateAgeBracketRange(16, 17, null)).toBeNull();
+  });
+  it("still rejects a negative minimum age when bounds is null", () => {
+    expect(validateAgeBracketRange(-1, 5, null)).toMatch(/negative/);
+  });
+  it("still rejects minimum > maximum when bounds is null", () => {
+    expect(validateAgeBracketRange(10, 5, null)).toMatch(/exceed maximum/);
+  });
+  it("validateBracketSet allows an unbounded set, including ages above 15", () => {
+    const err = validateBracketSet(
+      [
+        { minAge: 0, maxAge: 11 },
+        { minAge: 12, maxAge: 17 },
+      ],
+      null
+    );
+    expect(err).toBeNull();
+  });
+});
+
 describe("overlapping bracket detection", () => {
   it("flags 0-5 and 5-10 as overlapping (age 5 would match both)", () => {
     const pairs = findOverlappingBracketPairs([

@@ -293,16 +293,22 @@ model TransferRate {
 // Rate Library: Activities
 // ---------------------------------------------------------------------------
 
+enum ActivityPricingBasis {
+  PER_PERSON
+  PER_GROUP
+}
+
 model ActivityRate {
-  id         String   @id @default(cuid())
-  name       String
-  location   String
-  priceCents Int
-  currency   Currency
-  notes      String?
-  archived   Boolean  @default(false)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id           String               @id @default(cuid())
+  name         String
+  location     String
+  priceCents   Int
+  pricingBasis ActivityPricingBasis @default(PER_PERSON)
+  currency     Currency
+  notes        String?
+  archived     Boolean              @default(false)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
 
   @@index([name])
   @@index([archived])

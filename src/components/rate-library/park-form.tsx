@@ -78,7 +78,7 @@ export function ParkForm({
     setError(null);
 
     const parsedBrackets = brackets.map((b) => ({ id: b.key, minAge: Number(b.minAge), maxAge: Number(b.maxAge), label: b.label }));
-    const bracketError = validateBracketSet(parsedBrackets);
+    const bracketError = validateBracketSet(parsedBrackets, null);
     if (bracketError) {
       setError(bracketError);
       return;
@@ -157,7 +157,6 @@ export function ParkForm({
                   <Input
                     type="number"
                     min={0}
-                    max={15}
                     placeholder="Min age"
                     value={b.minAge}
                     onChange={(e) => updateBracket(b.key, { minAge: e.target.value })}
@@ -167,7 +166,6 @@ export function ParkForm({
                   <Input
                     type="number"
                     min={0}
-                    max={15}
                     placeholder="Max age"
                     value={b.maxAge}
                     onChange={(e) => updateBracket(b.key, { maxAge: e.target.value })}

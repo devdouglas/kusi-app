@@ -10,20 +10,24 @@ import {
   deleteActivityRate,
 } from "@/lib/actions/rate-library";
 import { formatMoney, centsToAmount, type Currency } from "@/lib/money";
+import { ACTIVITY_PRICING_BASIS_LABELS, type ActivityPricingBasis } from "@/types/line-items";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Label, Textarea } from "@/components/ui/field";
+import { Input, Label, Select, Textarea } from "@/components/ui/field";
 import { MoneyField } from "@/components/ui/money-field";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
 import { LibraryToolbar } from "@/components/rate-library/library-toolbar";
 import { RowActions } from "@/components/rate-library/row-actions";
 
+const PRICING_BASES: ActivityPricingBasis[] = ["PER_PERSON", "PER_GROUP"];
+
 interface ActivityRate {
   id: string;
   name: string;
   location: string;
   priceCents: number;
+  pricingBasis: ActivityPricingBasis;
   currency: Currency;
   notes: string | null;
   archived: boolean;
@@ -62,7 +66,8 @@ export function ActivityLibraryClient({ items, rateMicros }: { items: ActivityRa
               <tr className="border-b border-border text-left text-[12px] font-medium uppercase tracking-wide text-muted">
                 <th className="px-6 py-3">Activity</th>
                 <th className="px-6 py-3">Location</th>
-                <th className="px-6 py-3">Price per participant</th>
+                <th className="px-6 py-3">Pricing Basis</th>
+                <th className="px-6 py-3">Price</th>
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
@@ -73,6 +78,7 @@ export function ActivityLibraryClient({ items, rateMicros }: { items: ActivityRa
                     {item.name} {item.archived && <Badge tone="neutral"> Archived</Badge>}
                   </td>
                   <td className="px-6 py-3 text-muted">{item.location}</td>
+                  <td className="px-6 py-3 text-muted">{ACTIVITY_PRICING_BASIS_LABELS[item.pricingBasis]}</td>
                   <td className="px-6 py-3">{formatMoney(item.priceCents, item.currency)}</td>
                   <td className="px-6 py-3">
                     <RowActions
@@ -128,6 +134,7 @@ function ActivityForm({
   const [name, setName] = useState(initial?.name ?? "");
   const [location, setLocation] = useState(initial?.location ?? "");
   const [amount, setAmount] = useState(initial ? centsToAmount(initial.priceCents) : 0);
+  const [pricingBasis, setPricingBasis] = useState<ActivityPricingBasis>(initial?.pricingBasis ?? "PER_PERSON");
   const [currency, setCurrency] = useState<Currency>(initial?.currency ?? "USD");
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [error, setError] = useState<string | null>(null);
@@ -138,7 +145,7 @@ function ActivityForm({
     setError(null);
     setSaving(true);
     try {
-      const payload = { name, location, price: amount, currency, notes };
+      const payload = { name, location, price: amount, pricingBasis, currency, notes };
       if (initial) {
         await updateActivityRate(initial.id, payload);
       } else {
@@ -164,7 +171,22 @@ function ActivityForm({
           <Input id="location" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Naivasha" required />
         </div>
         <div>
-          <Label>Price per participant</Label>
+          <Label htmlFor="pricingBasis">Pricing basis</Label>
+          <Select id="pricingBasis" value={pricingBasis} onChange={(e) => setPricingBasis(e.target.value as ActivityPricingBasis)}>
+            {PRICING_BASES.map((b) => (
+              <option key={b} value={b}>
+                {ACTIVITY_PRICING_BASIS_LABELS[b]}
+              </option>
+            ))}
+          </Select>
+          <p className="mt-1.5 text-[12px] text-muted">
+            {pricingBasis === "PER_PERSON"
+              ? "Multiplied by the number of participants when added to a quote."
+              : "One amount per group booking; the number of groups can be adjusted in the quote."}
+          </p>
+        </div>
+        <div>
+          <Label>{pricingBasis === "PER_PERSON" ? "Price per participant" : "Price per group"}</Label>
           <MoneyField amount={amount} currency={currency} onAmountChange={setAmount} onCurrencyChange={setCurrency} rateMicros={rateMicros} />
         </div>
         <div>

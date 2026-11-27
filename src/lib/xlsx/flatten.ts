@@ -5,6 +5,7 @@ import {
   MEAL_PLAN_LABELS,
   VEHICLE_TYPE_LABELS,
   LODGE_ACTIVITY_PRICING_BASIS_LABELS,
+  ACTIVITY_PRICING_BASIS_LABELS,
   type Season,
   type MealPlan,
 } from "@/types/line-items";
@@ -194,7 +195,7 @@ export function flattenActivityRates(
         {
           activity: r.name,
           location: r.location,
-          pricingBasis: "Per Participant",
+          pricingBasis: ACTIVITY_PRICING_BASIS_LABELS[r.pricingBasis],
           price: centsToAmount(r.priceCents),
           currency: r.currency,
           usdEquivalent: centsToAmount(toUsdCents(r.priceCents, r.currency, rateMicros)),

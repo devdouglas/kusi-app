@@ -103,6 +103,7 @@ export const activityManualLineInput = z.object({
   name: z.string().trim().min(1, "Activity name is required"),
   location: z.string().trim().optional(),
   price: z.number().min(0),
+  pricingBasis: z.enum(["PER_PERSON", "PER_GROUP"]),
   currency,
   participants: positiveInt,
 });
